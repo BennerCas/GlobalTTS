@@ -167,11 +167,27 @@ def main():
     mode = sys.argv[1].lower() if len(sys.argv) > 1 else "play"
 
     if mode == "stop":
+        import psutil
+        current_pid = os.getpid()
+        killed_any = False
+        for p in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                cmdline = p.info.get('cmdline')
+                if p.info['pid'] != current_pid and cmdline and 'tts_engine.py' in ' '.join(cmdline):
+                    p.kill()
+                    killed_any = True
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+        
         try:
             sd.stop()
         except Exception:
             pass
-        log("[STOP] Audio detenido.")
+            
+        if killed_any:
+            log("[STOP] Procesos de audio anteriores detenidos forzosamente.")
+        else:
+            log("[STOP] Audio detenido (sd.stop).")
         return
 
     text = get_clipboard_text()
