@@ -133,3 +133,24 @@
 [2026-10-03 11:55:43] [AI] Traducción exitosa: Hola mundo, ¡esto es una prueba del asistente de IA!...
 [2026-10-03 11:55:43] [PLAY] Sintetizando para reproducir (52 caracteres)...
 [2026-10-03 11:55:50] [PLAY-DONE] Reproducción completa.
+[2026-10-03 12:00:50] [AI] Iniciando traducción/adaptación con Gemini...
+[2026-10-03 12:01:04] [ERROR-AI] Fallo al traducir con Gemini: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+[2026-10-03 12:01:04] [PLAY] Sintetizando para reproducir (5283 caracteres)...
+[2026-10-03 12:02:16] [STOP] Audio detenido.
+[2026-10-03 12:02:17] [STOP] Audio detenido.
+[2026-10-03 12:02:18] [STOP] Audio detenido.
+[2026-10-03 12:02:19] [STOP] Audio detenido.
+[2026-10-03 12:02:19] [STOP] Audio detenido.
+[2026-10-03 12:02:21] [STOP] Audio detenido.
+[2026-10-03 12:02:22] [STOP] Audio detenido.
+[2026-10-03 12:02:22] [STOP] Audio detenido.
+[2026-10-03 12:02:23] [STOP] Audio detenido.
+[2026-10-03 12:02:23] [STOP] Audio detenido.
+[2026-10-03 12:04:12] [STOP] Audio detenido.
+[2026-10-03 12:04:20] [STOP] Audio detenido.
+[2026-10-03 12:04:22] [STOP] Audio detenido.
+[2026-10-03 12:04:23] [STOP] Audio detenido.
+[2026-10-03 12:04:29] [AI] Iniciando traducción/adaptación con Gemini...
+[2026-10-03 12:04:40] [AI] Traducción exitosa: Ustedes deberían tomar el autobús para llegar al apartamento...
+[2026-10-03 12:04:40] [PLAY] Sintetizando para reproducir (61 caracteres)...
+[2026-10-03 12:04:47] [PLAY-DONE] Reproducción completa.

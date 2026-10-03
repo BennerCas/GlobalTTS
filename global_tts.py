@@ -76,7 +76,7 @@ def translate_text_to_spanish(text: str) -> str:
         log("[AI] Iniciando traducción/adaptación con Gemini...")
         client = genai.Client(api_key=api_key)
         prompt = (
-            "Traduce el siguiente texto al español manteniendo el contexto, "
+            "Traduce el siguiente texto al español latinoamericano manteniendo el contexto, "
             "la coherencia, la cohesión y la estructura original del mensaje "
             "para que la idea principal quede completamente clara. "
             "Si el texto ya está en español, corrígelo o mejóralo ligeramente si es necesario "
