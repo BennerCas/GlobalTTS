@@ -1,7 +1,7 @@
 {
     "voice": "es-ES-AlvaroNeural",
     "alt_voice": "es-MX-DaliaNeural",
-    "rate": "+30%",
+    "rate": "+50%",
     "volume": "+0%",
     "save_directory": "C:\\Users\\Benner\\Downloads\\TTS_Audios",
     "enable_escape_to_stop": true,
