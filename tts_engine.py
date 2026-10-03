@@ -172,8 +172,9 @@ def main():
         killed_any = False
         for p in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
+                name = p.info.get('name', '').lower()
                 cmdline = p.info.get('cmdline')
-                if p.info['pid'] != current_pid and cmdline and 'tts_engine.py' in ' '.join(cmdline):
+                if p.info['pid'] != current_pid and name in ('python.exe', 'pythonw.exe') and cmdline and 'tts_engine.py' in ' '.join(cmdline):
                     p.kill()
                     killed_any = True
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
@@ -190,6 +191,52 @@ def main():
             log("[STOP] Audio detenido (sd.stop).")
         return
 
+    if mode in ["speedup", "speeddown"]:
+        import psutil
+        current_pid = os.getpid()
+        for p in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                name = p.info.get('name', '').lower()
+                cmdline = p.info.get('cmdline')
+                if p.info['pid'] != current_pid and name in ('python.exe', 'pythonw.exe') and cmdline and 'tts_engine.py' in ' '.join(cmdline):
+                    p.kill()
+            except:
+                pass
+        try:
+            sd.stop()
+        except:
+            pass
+
+        cfg = load_config()
+        current_rate_str = cfg.get("rate", "+0%")
+        val = int(current_rate_str.replace('%', '').replace('+', ''))
+        
+        if mode == "speedup":
+            val += 10
+            if val > 100: val = 100
+        else:
+            val -= 10
+            if val < -50: val = -50
+            
+        sign = "+" if val >= 0 else ""
+        cfg["rate"] = f"{sign}{val}%"
+        
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=4)
+            
+        winsound.Beep(1200 if mode == "speedup" else 800, 50)
+            
+        last_speech_path = os.path.join(BASE_DIR, "last_speech.txt")
+        if os.path.exists(last_speech_path):
+            with open(last_speech_path, "r", encoding="utf-8") as f:
+                cleaned = f.read()
+            import asyncio
+            global CONFIG
+            CONFIG = load_config()
+            log(f"[SPEED] Nueva velocidad ajustada a {CONFIG['rate']}. Reanudando lectura...")
+            asyncio.run(do_play(cleaned))
+        return
+
     text = get_clipboard_text()
     if not text:
         log("[WARN] Portapapeles vacío o sin texto.")
@@ -203,6 +250,9 @@ def main():
     cleaned = clean_text_for_tts(translated_text)
     if not cleaned:
         return
+        
+    with open(os.path.join(BASE_DIR, "last_speech.txt"), "w", encoding="utf-8") as f:
+        f.write(cleaned)
 
     import asyncio
     if mode == "save":

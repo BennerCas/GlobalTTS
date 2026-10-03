@@ -31,6 +31,25 @@ Esc:: {
     Run('"' . PythonExe . '" "' . EngineScript . '" stop', , "Hide")
 }
 
+; --- 4. CONTROL DE VELOCIDAD ---
+#HotIf GetKeyState("LButton", "P") and GetKeyState("Space", "P")
+WheelUp:: {
+    Run('"' . PythonExe . '" "' . EngineScript . '" speedup', , "Hide")
+}
+WheelDown:: {
+    Run('"' . PythonExe . '" "' . EngineScript . '" speeddown', , "Hide")
+}
+#HotIf
+
+#HotIf GetKeyState("Alt", "P") and GetKeyState("Space", "P")
+WheelUp:: {
+    Run('"' . PythonExe . '" "' . EngineScript . '" speedup', , "Hide")
+}
+WheelDown:: {
+    Run('"' . PythonExe . '" "' . EngineScript . '" speeddown', , "Hide")
+}
+#HotIf
+
 TriggerAction(mode) {
     ; Limpiar portapapeles y copiar la selección
     A_Clipboard := ""
