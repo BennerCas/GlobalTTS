@@ -1,0 +1,10 @@
+{
+  "voice": "es-ES-AlvaroNeural",
+  "alt_voice": "es-MX-DaliaNeural",
+  "rate": "+0%",
+  "volume": "+0%",
+  "save_directory": "C:\\Users\\Benner\\Downloads\\TTS_Audios",
+  "enable_escape_to_stop": true,
+  "enable_alt_space_fallback": true,
+  "enable_save_hotkey": true
+}
