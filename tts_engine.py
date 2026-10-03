@@ -11,6 +11,8 @@ import win32con
 import edge_tts
 import soundfile as sf
 import sounddevice as sd
+from dotenv import load_dotenv
+from google import genai
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
@@ -85,6 +87,39 @@ def get_clipboard_text():
         time.sleep(0.02)
     return ""
 
+def translate_text_to_spanish(text: str) -> str:
+    env_path = r"C:\Users\Benner\.gemini\.env"
+    if os.path.exists(env_path):
+        load_dotenv(env_path)
+    
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        log("[WARN] No se encontró GEMINI_API_KEY en .env, usando texto original.")
+        return text
+
+    try:
+        log("[AI] Iniciando traducción/adaptación con Gemini...")
+        client = genai.Client(api_key=api_key)
+        prompt = (
+            "Traduce el siguiente texto al español manteniendo el contexto, "
+            "la coherencia, la cohesión y la estructura original del mensaje "
+            "para que la idea principal quede completamente clara. "
+            "Si el texto ya está en español, corrígelo o mejóralo ligeramente si es necesario "
+            "para que suene natural al ser leído en voz alta. "
+            "Devuelve ÚNICAMENTE el texto resultante, sin explicaciones, ni comillas, ni markdown:\n\n"
+            f"{text}"
+        )
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+        )
+        translated = response.text.strip()
+        log(f"[AI] Traducción exitosa: {translated[:60]}...")
+        return translated
+    except Exception as e:
+        log(f"[ERROR-AI] Fallo al traducir con Gemini: {e}")
+        return text
+
 async def do_save(text: str):
     try:
         target_dir = CONFIG.get("save_directory", r"C:\Users\Benner\Downloads\TTS_Audios")
@@ -145,7 +180,11 @@ def main():
         winsound.Beep(400, 100)
         return
 
-    cleaned = clean_text_for_tts(text)
+    # 1. Traducir el texto al español manteniendo coherencia y estructura
+    translated_text = translate_text_to_spanish(text)
+
+    # 2. Limpiar texto para mejorar TTS
+    cleaned = clean_text_for_tts(translated_text)
     if not cleaned:
         return
 
