@@ -1,0 +1,22 @@
+# Secretos
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv*/
+venv*/
+.pytest_cache/
+
+# Estado y logs de ejecución
+*.log
+last_speech.txt
+playback.lock
+
+# Artefactos generados (audio, video, voces clonadas, trabajos)
+biblioteca/*
+!biblioteca/.gitkeep
+models_link/
+scratch/

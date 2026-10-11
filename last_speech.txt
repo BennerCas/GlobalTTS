@@ -1,1 +1,0 @@
-<pensando>1. Analizar Intención de Usuario: El usuario quiere un componente de IU.</pensando>
