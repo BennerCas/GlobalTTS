@@ -165,7 +165,7 @@ class LibraryTab(QWidget):
 
         actions_grid.addWidget(self.btn_open_video)
         actions_grid.addWidget(self.btn_open_folder)
-        detail_layout.addWidget(actions_grid)
+        detail_layout.addLayout(actions_grid)
 
         # Botones de Exportación / Subida
         upload_grid = QHBoxLayout()
@@ -179,7 +179,7 @@ class LibraryTab(QWidget):
 
         upload_grid.addWidget(self.btn_youtube)
         upload_grid.addWidget(self.btn_spotify)
-        detail_layout.addWidget(upload_grid)
+        detail_layout.addLayout(upload_grid)
 
         detail_layout.addStretch()
         splitter.addWidget(self.detail_panel)

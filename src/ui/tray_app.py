@@ -337,29 +337,29 @@ class MainWindow(QDialog):
         extra_lay.addRow("Portada de Audiolibro:", cover_row)
 
         interstitial_box = QVBoxLayout()
-        self.chk_cuña = QCheckBox("Insertar cuña / separador entre capítulos")
-        self.chk_cuña.toggled.connect(lambda v: self.cuña_frame.setEnabled(v))
-        interstitial_box.addWidget(self.chk_cuña)
+        self.chk_interstitial = QCheckBox("Insertar cuña / separador entre capítulos")
+        self.chk_interstitial.toggled.connect(lambda v: self.interstitial_frame.setEnabled(v))
+        interstitial_box.addWidget(self.chk_interstitial)
 
-        self.cuña_frame = QFrame()
-        cuña_lay = QHBoxLayout(self.cuña_frame)
-        self.cuña_text = QLineEdit("Estás escuchando la obra en GlobalTTS.")
-        self.cuña_voice = QComboBox()
+        self.interstitial_frame = QFrame()
+        cuña_lay = QHBoxLayout(self.interstitial_frame)
+        self.interstitial_text = QLineEdit("Estás escuchando la obra en GlobalTTS.")
+        self.interstitial_voice = QComboBox()
         for k, v in self.voices_dict.items():
-            self.cuña_voice.addItem(v.name, k)
+            self.interstitial_voice.addItem(v.name, k)
 
-        self.btn_preview_cuña = QPushButton("▶️ Escuchar previa")
-        self.btn_preview_cuña.setObjectName("actionButton")
-        self.btn_preview_cuña.clicked.connect(self.preview_cuña)
+        self.btn_preview_interstitial = QPushButton("▶️ Escuchar previa")
+        self.btn_preview_interstitial.setObjectName("actionButton")
+        self.btn_preview_interstitial.clicked.connect(self.preview_interstitial)
 
         cuña_lay.addWidget(QLabel("Texto:"))
-        cuña_lay.addWidget(self.cuña_text)
+        cuña_lay.addWidget(self.interstitial_text)
         cuña_lay.addWidget(QLabel("Voz:"))
-        cuña_lay.addWidget(self.cuña_voice)
-        cuña_lay.addWidget(self.btn_preview_cuña)
+        cuña_lay.addWidget(self.interstitial_voice)
+        cuña_lay.addWidget(self.btn_preview_interstitial)
 
-        self.cuña_frame.setEnabled(False)
-        interstitial_box.addWidget(self.cuña_frame)
+        self.interstitial_frame.setEnabled(False)
+        interstitial_box.addWidget(self.interstitial_frame)
         extra_lay.addRow("Cuña Radial:", interstitial_box)
 
         scroll_layout.addWidget(extra_group)
@@ -502,9 +502,9 @@ class MainWindow(QDialog):
         if img:
             self.cover_edit.setText(img)
 
-    def preview_cuña(self):
-        text = self.cuña_text.text().strip()
-        voice = self.cuña_voice.currentData()
+    def preview_interstitial(self):
+        text = self.interstitial_text.text().strip()
+        voice = self.interstitial_voice.currentData()
         if not text:
             return
 
@@ -529,11 +529,11 @@ class MainWindow(QDialog):
         for item in self.batch_files:
             # Cuñas configuradas
             interstitials = []
-            if self.chk_cuña.isChecked() and self.cuña_text.text().strip():
+            if self.chk_interstitial.isChecked() and self.interstitial_text.text().strip():
                 interstitials.append(
                     InterstitialItem(
-                        text=self.cuña_text.text().strip(),
-                        voice_key=self.cuña_voice.currentData(),
+                        text=self.interstitial_text.text().strip(),
+                        voice_key=self.interstitial_voice.currentData(),
                         position="between_chapters"
                     )
                 )
