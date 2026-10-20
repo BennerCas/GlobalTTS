@@ -58,6 +58,7 @@ from src.ai.nemo_enhancer import MistralNeMoEnhancer, NarrationConfig
 from src.ai.piper_engine import PiperTtsEngine, list_available_piper_voices
 from src.core.job import AudiobookPipeline, InterstitialItem, JobConfig, JobMetadata
 from src.ui.library_tab import LibraryTab
+from src.ui.quick_reader_tab import QuickReaderTab
 from src.ui.styles import DARK_THEME_QSS
 
 BIBLIOTECA_DIR = PROJECT_ROOT / "biblioteca"
@@ -156,6 +157,7 @@ class MainWindow(QDialog):
 
         if initial_file:
             self.add_file_to_batch(initial_file)
+            self.tabs.setCurrentIndex(1)
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -182,12 +184,16 @@ class MainWindow(QDialog):
             }
         """)
 
-        # Pestaña 1: Generador & Lotes
+        # Pestaña 1: Lectura Rápida & Suite de Configuración Profesional
+        self.tab_quick = QuickReaderTab()
+        self.tabs.addTab(self.tab_quick, "⚡ Lectura Rápida & Configuración")
+
+        # Pestaña 2: Generador de Audiolibros & Lotes
         self.tab_generator = QWidget()
         self.init_generator_tab()
         self.tabs.addTab(self.tab_generator, "🎙️ Generador de Audiolibros")
 
-        # Pestaña 2: Biblioteca & Reproductor
+        # Pestaña 3: Biblioteca & Reproductor
         self.tab_library = LibraryTab()
         self.tabs.addTab(self.tab_library, "📚 Biblioteca & Reproductor")
 
@@ -660,19 +666,32 @@ class GlobalTTSTrayIcon(QSystemTrayIcon):
         menu = QMenu()
         menu.setStyleSheet(DARK_THEME_QSS)
 
-        open_app_action = QAction("🎙️ Abrir Generador de Audiolibros...", menu)
+        open_app_action = QAction("🎙️ Abrir GlobalTTS (Ventana Principal)", menu)
+        f = open_app_action.font()
+        f.setBold(True)
+        open_app_action.setFont(f)
         open_app_action.triggered.connect(self.show_main_window)
         menu.addAction(open_app_action)
 
-        load_action = QAction("📄 Cargar archivo(s) para procesar...", menu)
-        load_action.triggered.connect(self.open_file_dialog)
-        menu.addAction(load_action)
+        menu.addSeparator()
+
+        quick_action = QAction("⚡ Lector Rápido & Configuración", menu)
+        quick_action.triggered.connect(self.show_quick_reader)
+        menu.addAction(quick_action)
+
+        gen_action = QAction("🎙️ Generador de Audiolibros & Lotes", menu)
+        gen_action.triggered.connect(self.show_generator)
+        menu.addAction(gen_action)
+
+        open_bib_action = QAction("📚 Biblioteca & Reproductor", menu)
+        open_bib_action.triggered.connect(self.show_library_tab)
+        menu.addAction(open_bib_action)
 
         menu.addSeparator()
 
-        open_bib_action = QAction("📚 Abrir Biblioteca & Reproductor", menu)
-        open_bib_action.triggered.connect(self.show_library_tab)
-        menu.addAction(open_bib_action)
+        load_action = QAction("📄 Cargar archivo(s) para audiolibro...", menu)
+        load_action.triggered.connect(self.open_file_dialog)
+        menu.addAction(load_action)
 
         menu.addSeparator()
 
@@ -684,7 +703,7 @@ class GlobalTTSTrayIcon(QSystemTrayIcon):
         self.activated.connect(self.on_tray_activated)
 
     def on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason):
-        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+        if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
             self.show_main_window()
 
     def show_main_window(self, initial_file: Optional[str] = None):
@@ -692,15 +711,27 @@ class GlobalTTSTrayIcon(QSystemTrayIcon):
             self.main_window = MainWindow(initial_file=initial_file)
         elif initial_file:
             self.main_window.add_file_to_batch(initial_file)
+            self.main_window.tabs.setCurrentIndex(1)
 
         self.main_window.show()
+        self.main_window.setWindowState(self.main_window.windowState() & ~Qt.WindowState.WindowMinimized | Qt.WindowState.WindowActive)
         self.main_window.raise_()
         self.main_window.activateWindow()
+
+    def show_quick_reader(self):
+        self.show_main_window()
+        if self.main_window:
+            self.main_window.tabs.setCurrentIndex(0)
+
+    def show_generator(self):
+        self.show_main_window()
+        if self.main_window:
+            self.main_window.tabs.setCurrentIndex(1)
 
     def show_library_tab(self):
         self.show_main_window()
         if self.main_window:
-            self.main_window.tabs.setCurrentIndex(1)
+            self.main_window.tabs.setCurrentIndex(2)
 
     def open_file_dialog(self):
         files, _ = QFileDialog.getOpenFileNames(
@@ -710,8 +741,8 @@ class GlobalTTSTrayIcon(QSystemTrayIcon):
             "Documentos Soportados (*.txt *.pdf *.epub *.md);;Texto Plano (*.txt *.md);;PDF (*.pdf);;EPUB (*.epub)"
         )
         if files:
-            self.show_main_window(initial_file=files[0])
-            for extra in files[1:]:
+            self.show_generator()
+            for extra in files:
                 self.main_window.add_file_to_batch(extra)
 
 
@@ -722,12 +753,16 @@ def run_tray():
     tray = GlobalTTSTrayIcon(app)
     tray.show()
 
-    tray.showMessage(
-        "GlobalTTS Activo",
-        "Haz clic derecho en este ícono para abrir el Generador de Audiolibros y la Biblioteca con Reproductor.",
-        QSystemTrayIcon.MessageIcon.Information,
-        3000
-    )
+    # Abrir la ventana principal al arrancar por defecto (salvo que se pase --minimized)
+    if "--minimized" not in sys.argv:
+        tray.show_main_window()
+    else:
+        tray.showMessage(
+            "GlobalTTS Activo",
+            "Servicio de lectura rápida y audiolibros activo en segundo plano.",
+            QSystemTrayIcon.MessageIcon.Information,
+            2500
+        )
 
     sys.exit(app.exec())
 

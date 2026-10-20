@@ -1,10 +1,14 @@
 {
-    "voice": "es-ES-AlvaroNeural",
-    "alt_voice": "es-MX-DaliaNeural",
-    "rate": "+60%",
+    "voice": "es_MX-claude-high",
+    "speed_factor": 1.0,
     "volume": "+0%",
     "save_directory": "C:\\Users\\Benner\\Downloads\\TTS_Audios",
+    "auto_translate_en": true,
     "enable_escape_to_stop": true,
     "enable_alt_space_fallback": true,
-    "enable_save_hotkey": true
+    "enable_save_hotkey": true,
+    "start_with_windows": true,
+    "firma": "HUMAN AI SYNERGY BY BENNER CASTILLO",
+    "alt_voice": "es-MX-DaliaNeural",
+    "rate": "+60%"
 }

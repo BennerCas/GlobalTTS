@@ -98,8 +98,17 @@ class AudioAssembler:
         )
 
     @staticmethod
-    def convert_to_mp3(wav_path: Path, output_mp3_path: Path, bitrate: str = "256k", cover_image_path: Optional[Path] = None) -> Path:
-        """Convierte WAV a MP3 usando ffmpeg con normalización loudnorm e incrustación opcional de portada."""
+    def convert_to_mp3(
+        wav_path: Path,
+        output_mp3_path: Path,
+        bitrate: str = "256k",
+        cover_image_path: Optional[Path] = None,
+        title: str = "",
+        artist: str = "HUMAN AI SYNERGY BY BENNER CASTILLO",
+        comment: str = "",
+        date: str = ""
+    ) -> Path:
+        """Convierte WAV a MP3 usando ffmpeg con normalización loudnorm, portada y metadatos ID3 completos."""
         import sys
         output_mp3_path = Path(output_mp3_path)
         output_mp3_path.parent.mkdir(parents=True, exist_ok=True)
@@ -125,8 +134,21 @@ class AudioAssembler:
             "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
             "-codec:a", "libmp3lame",
             "-b:a", bitrate,
-            str(output_mp3_path)
+            "-metadata", f"artist={artist}",
+            "-metadata", f"album_artist={artist}",
+            "-metadata", f"composer={artist}",
+            "-metadata", f"publisher={artist}",
+            "-metadata", f"copyright={artist} - 2026®",
         ])
+
+        if title:
+            cmd.extend(["-metadata", f"title={title}"])
+        if date:
+            cmd.extend(["-metadata", f"date={date}"])
+        if comment:
+            cmd.extend(["-metadata", f"comment={comment}"])
+
+        cmd.append(str(output_mp3_path))
 
         creationflags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
 

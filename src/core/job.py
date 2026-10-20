@@ -76,7 +76,12 @@ class JobMetadata:
     output_video_path: Optional[str]
     output_master_path: Optional[str]
     cover_image_path: Optional[str]
-    app_version: str = "2.1.0"
+    firma: str = "HUMAN AI SYNERGY BY BENNER CASTILLO"
+    fecha: str = ""
+    hora: str = ""
+    duracion_formato: str = ""
+    archivos_generados: dict = field(default_factory=dict)
+    app_version: str = "2.2.0"
 
 
 class AudiobookPipeline:
@@ -229,37 +234,75 @@ class AudiobookPipeline:
 
         # 10. Guardar copia Master sin pérdida si se solicitó
         out_master_str = None
+        now_dt = datetime.now()
+        fecha_str = now_dt.strftime("%Y-%m-%d")
+        hora_str = now_dt.strftime("%H:%M:%S")
+        dur_s = round(assembly_res.duration_s, 2)
+        dur_fmt = time.strftime("%H:%M:%S", time.gmtime(dur_s))
+        firma_str = "HUMAN AI SYNERGY BY BENNER CASTILLO"
+        doc_display_title = doc.title or slug.replace("_", " ").title()
+
         if self.config.save_flac_master and temp_wav.exists():
             try:
-                # Convertir a FLAC
+                # Convertir a FLAC con metadatos completos
                 import subprocess, sys
                 cflags = 0x08000000 if sys.platform == "win32" else 0
-                cmd_flac = ["ffmpeg", "-y", "-i", str(temp_wav), "-c:a", "flac", str(master_audio_path)]
+                cmd_flac = [
+                    "ffmpeg", "-y", "-i", str(temp_wav),
+                    "-c:a", "flac",
+                    "-metadata", f"artist={firma_str}",
+                    "-metadata", f"album_artist={firma_str}",
+                    "-metadata", f"title={doc_display_title} (Master FLAC)",
+                    "-metadata", f"date={fecha_str}",
+                    "-metadata", f"comment=Firma: {firma_str} | Fecha: {fecha_str} {hora_str} | Duración: {dur_fmt}",
+                    "-metadata", f"copyright={firma_str} - 2026®",
+                    str(master_audio_path)
+                ]
                 subprocess.run(cmd_flac, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=cflags)
                 if master_audio_path and master_audio_path.exists():
                     out_master_str = str(master_audio_path.resolve())
             except Exception:
                 pass
 
-        # 11. Conversión a MP3 de alta calidad con portada
+        # 11. Conversión a MP3 de alta calidad con portada y metadatos ID3
         out_audio_str = None
         if self.config.generate_audio:
             emit_stage("normalize", "Normalizando audio a MP3 alta calidad con portada...", 80.0 if self.config.generate_video else 92.0)
-            assembler.convert_to_mp3(temp_wav, final_mp3, bitrate="256k", cover_image_path=copied_cover_path)
+            assembler.convert_to_mp3(
+                wav_path=temp_wav,
+                output_mp3_path=final_mp3,
+                bitrate="256k",
+                cover_image_path=copied_cover_path,
+                title=doc_display_title,
+                artist=firma_str,
+                comment=f"Firma: {firma_str} | Fecha: {fecha_str} {hora_str} | Duración: {dur_fmt}",
+                date=fecha_str
+            )
             out_audio_str = str(final_mp3.resolve())
 
-        # 12. Renderizado de video karaoke (MP4) con fondo
+        # 12. Renderizado de video karaoke (MP4) con fondo y metadatos
         out_video_str = None
         if self.config.generate_video:
             emit_stage("subtitles", "Generando subtítulos sincronizados estilo karaoke...", 85.0)
-            generate_ass_subtitles(assembly_res.sentences, ass_subtitles, title=doc.title)
+            generate_ass_subtitles(
+                sentences=assembly_res.sentences,
+                output_ass_path=ass_subtitles,
+                title=doc_display_title,
+                fecha=fecha_str,
+                hora=hora_str,
+                duracion=dur_fmt
+            )
 
             emit_stage("video", "Renderizando video MP4 karaoke sincronizado...", 90.0)
             render_karaoke_video(
                 audio_path=temp_wav,
                 ass_subtitles_path=ass_subtitles,
                 output_video_path=final_video,
-                cover_image_path=copied_cover_path
+                cover_image_path=copied_cover_path,
+                title=doc_display_title,
+                artist=firma_str,
+                comment=f"Firma: {firma_str} | Fecha: {fecha_str} {hora_str} | Duración: {dur_fmt}",
+                date=fecha_str
             )
             out_video_str = str(final_video.resolve())
 
@@ -274,7 +317,42 @@ class AudiobookPipeline:
         completed_at_str = datetime.now().isoformat()
         emit_stage("done", "Audiolibro y video generados con éxito.", 100.0)
 
-        # 13. Metadatos según ESTRUCTURA.md
+        # 13. Cálculo de tamaños de archivo
+        archivos_dict = {}
+        if out_audio_str and Path(out_audio_str).exists():
+            sz = Path(out_audio_str).stat().st_size
+            archivos_dict["mp3"] = {
+                "ruta": out_audio_str,
+                "tamano_bytes": sz,
+                "tamano_mb": f"{sz / (1024 * 1024):.2f} MB",
+                "formato": "MP3 256k EBU R128"
+            }
+        if out_master_str and Path(out_master_str).exists():
+            sz = Path(out_master_str).stat().st_size
+            archivos_dict["master_flac"] = {
+                "ruta": out_master_str,
+                "tamano_bytes": sz,
+                "tamano_mb": f"{sz / (1024 * 1024):.2f} MB",
+                "formato": "FLAC Master (Sin Pérdida)"
+            }
+        if out_video_str and Path(out_video_str).exists():
+            sz = Path(out_video_str).stat().st_size
+            archivos_dict["video_mp4"] = {
+                "ruta": out_video_str,
+                "tamano_bytes": sz,
+                "tamano_mb": f"{sz / (1024 * 1024):.2f} MB",
+                "formato": "Video Karaoke MP4 1080p"
+            }
+        if ass_subtitles.exists():
+            sz = ass_subtitles.stat().st_size
+            archivos_dict["subtitulos_ass"] = {
+                "ruta": str(ass_subtitles.resolve()),
+                "tamano_bytes": sz,
+                "tamano_mb": f"{sz / 1024:.1f} KB",
+                "formato": "Subtítulos Karaoke ASS"
+            }
+
+        # 14. Metadatos según ESTRUCTURA.md y directrices industriales
         metadata = JobMetadata(
             job_id=job_id,
             document_folder=str(book_folder.resolve()),
@@ -295,12 +373,17 @@ class AudiobookPipeline:
             source_sha256=doc.source_sha256,
             total_characters=doc.char_count,
             total_utterances=len(utterances),
-            duration_seconds=round(assembly_res.duration_s, 2),
+            duration_seconds=dur_s,
             latency_seconds=round(total_latency, 2),
             output_audio_path=out_audio_str,
             output_video_path=out_video_str,
             output_master_path=out_master_str,
-            cover_image_path=str(copied_cover_path.resolve()) if copied_cover_path else None
+            cover_image_path=str(copied_cover_path.resolve()) if copied_cover_path else None,
+            firma=firma_str,
+            fecha=fecha_str,
+            hora=hora_str,
+            duracion_formato=dur_fmt,
+            archivos_generados=archivos_dict
         )
 
         metadata_path = book_folder / f"{job_id}_metadata.json"
