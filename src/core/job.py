@@ -138,8 +138,24 @@ class AudiobookPipeline:
                     for par in ch.paragraphs:
                         if self.config.narration.mode == "rewrite":
                             processed = enhancer.rewrite_as_narration(par, self.config.narration)
+                        elif self.config.narration.mode == "translate":
+                            processed = enhancer.translate_and_adapt(
+                                par,
+                                target_lang=self.config.narration.target_language,
+                                prompt_id=self.config.narration.prompt_id,
+                            )
+                        elif self.config.narration.mode == "dialogue_analysis":
+                            analysis = enhancer.analyze_dialogues(par, prompt_id=self.config.narration.prompt_id)
+                            seg_texts = []
+                            for seg in analysis.get("segments", []):
+                                stext = seg.get("text", "")
+                                emotion = seg.get("emotion")
+                                if emotion and emotion not in ("neutral", ""):
+                                    stext = f"[{emotion}]{stext}[/{emotion}]"
+                                seg_texts.append(stext)
+                            processed = " ".join(seg_texts) if seg_texts else par
                         else:
-                            processed = enhancer.enhance_expressiveness(par)
+                            processed = enhancer.enhance_expressiveness(par, prompt_id=self.config.narration.prompt_id)
                         new_paragraphs.append(processed)
                     new_chapters.append(Chapter(title=ch.title, paragraphs=tuple(new_paragraphs)))
                 doc = Document(

@@ -67,6 +67,34 @@ def log(msg: str):
         pass
 
 
+def parse_volume(vol_val) -> float:
+    """Parsea el volumen a un factor multiplicador (1.0 = 100%).
+    Soporta enteros/floats (100 -> 1.0), strings numéricos ('100' -> 1.0),
+    y formatos heredados de edge-tts ('+0%' -> 1.0, '+20%' -> 1.2, '-20%' -> 0.8, '80%' -> 0.8).
+    """
+    if vol_val is None:
+        return 1.0
+    if isinstance(vol_val, (int, float)):
+        return max(0.0, min(2.0, float(vol_val) / 100.0 if vol_val > 2.0 else float(vol_val)))
+    if isinstance(vol_val, str):
+        v = vol_val.strip()
+        if v.endswith("%"):
+            v = v[:-1].strip()
+            try:
+                num = float(v)
+                if vol_val.strip().startswith(("+", "-")):
+                    return max(0.0, min(2.0, (100.0 + num) / 100.0))
+                return max(0.0, min(2.0, num / 100.0))
+            except ValueError:
+                return 1.0
+        try:
+            num = float(v)
+            return max(0.0, min(2.0, num / 100.0 if num > 2.0 else num))
+        except ValueError:
+            return 1.0
+    return 1.0
+
+
 def load_config() -> dict:
     cfg = dict(DEFAULT_CONFIG)
     if CONFIG_FILE.exists():
@@ -77,6 +105,9 @@ def load_config() -> dict:
                 # Migración de voces viejas de edge-tts si estuvieran guardadas
                 if "Neural" in str(cfg.get("voice", "")):
                     cfg["voice"] = "es_MX-claude-high"
+                # Sanitizar volumen
+                if isinstance(cfg.get("volume"), str):
+                    cfg["volume"] = int(round(parse_volume(cfg["volume"]) * 100))
         except Exception:
             pass
     return cfg
@@ -167,7 +198,7 @@ def do_play(text: str, cfg: dict):
     try:
         voice = cfg.get("voice", "es_MX-claude-high")
         speed = float(cfg.get("speed_factor", 1.0))
-        vol_pct = float(cfg.get("volume", 100)) / 100.0
+        vol_pct = parse_volume(cfg.get("volume", 100))
 
         log(f"[PLAY] Sintetizando con Piper ({voice}, speed={speed}x, {len(text)} chars)...")
         samples, sr = synthesize_audio(text, voice_key=voice, speed_factor=speed)
@@ -294,6 +325,10 @@ def main():
     if mode == "stop":
         stop_audio_processes()
         return
+
+    # Si se inicia una nueva lectura, detener cualquier audio anterior en reproducción activa
+    if mode == "play":
+        stop_audio_processes()
 
     cfg = load_config()
 
