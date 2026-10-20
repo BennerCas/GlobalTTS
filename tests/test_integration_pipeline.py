@@ -41,6 +41,9 @@ def test_full_audiobook_pipeline_e2e(tmp_path: Path):
     assert video_path.exists()
     assert video_path.stat().st_size > 1000  # Archivo MP4 válido
 
-    # Verificar metadata JSON en disco
-    meta_json = out_dir / f"{meta.job_id}_metadata.json"
+    # Verificar metadata JSON en disco dentro de la carpeta del libro
+    meta_json = Path(meta.document_folder) / f"{meta.job_id}_metadata.json"
     assert meta_json.exists()
+    assert Path(meta.document_folder).exists()
+    if meta.output_master_path:
+        assert Path(meta.output_master_path).exists()

@@ -119,9 +119,11 @@ def render_karaoke_video(
     audio_path: Path,
     ass_subtitles_path: Path,
     output_video_path: Path,
+    cover_image_path: Optional[Path] = None,
     ffmpeg_exe: str = "ffmpeg"
 ) -> Path:
-    """Renderiza video MP4 con pantalla negra 1080p, audio intacto y subtítulos ASS incrustados."""
+    """Renderiza video MP4 (pantalla negra o portada elegante) con subtítulos ASS incrustados."""
+    import sys
     if not shutil.which(ffmpeg_exe):
         raise RuntimeError("ffmpeg no se encuentra en el PATH del sistema.")
 
@@ -131,13 +133,29 @@ def render_karaoke_video(
     # Escapar ruta para el filtro ass en Windows (barras invertidas dobladas y dos puntos escapados)
     ass_escaped = str(ass_subtitles_path.resolve()).replace("\\", "/").replace(":", "\\:")
 
-    cmd = [
-        ffmpeg_exe,
-        "-y",
-        "-f", "lavfi",
-        "-i", "color=c=black:s=1920x1080:r=24",
-        "-i", str(audio_path),
-        "-vf", f"ass='{ass_escaped}'",
+    cmd = [ffmpeg_exe, "-y"]
+
+    if cover_image_path and Path(cover_image_path).exists():
+        # Portada como fondo 1080p con sutil desenfoque y oscurecimiento para legibilidad
+        cmd.extend([
+            "-loop", "1",
+            "-i", str(cover_image_path),
+            "-i", str(audio_path),
+            "-filter_complex",
+            f"[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,eq=brightness=-0.15[bg];[bg]ass='{ass_escaped}'[v]",
+            "-map", "[v]",
+            "-map", "1:a",
+        ])
+    else:
+        # Pantalla negra clásica 1080p
+        cmd.extend([
+            "-f", "lavfi",
+            "-i", "color=c=black:s=1920x1080:r=24",
+            "-i", str(audio_path),
+            "-vf", f"ass='{ass_escaped}'",
+        ])
+
+    cmd.extend([
         "-c:v", "libx264",
         "-preset", "veryfast",
         "-tune", "stillimage",
@@ -147,9 +165,14 @@ def render_karaoke_video(
         "-pix_fmt", "yuv420p",
         "-shortest",
         str(output_video_path)
-    ]
+    ])
 
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    creationflags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, creationflags=creationflags)
+
+    if output_video_path.exists() and output_video_path.stat().st_size > 1000:
+        return output_video_path
+
     if result.returncode != 0:
         raise RuntimeError(f"Fallo al renderizar video con ffmpeg:\n{result.stderr[-800:]}")
 

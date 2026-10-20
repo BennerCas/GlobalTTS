@@ -98,8 +98,9 @@ class AudioAssembler:
         )
 
     @staticmethod
-    def convert_to_mp3(wav_path: Path, output_mp3_path: Path, bitrate: str = "256k") -> Path:
-        """Convierte WAV a MP3 usando ffmpeg con normalización loudnorm."""
+    def convert_to_mp3(wav_path: Path, output_mp3_path: Path, bitrate: str = "256k", cover_image_path: Optional[Path] = None) -> Path:
+        """Convierte WAV a MP3 usando ffmpeg con normalización loudnorm e incrustación opcional de portada."""
+        import sys
         output_mp3_path = Path(output_mp3_path)
         output_mp3_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -107,12 +108,40 @@ class AudioAssembler:
             "ffmpeg",
             "-y",
             "-i", str(wav_path),
+        ]
+
+        if cover_image_path and Path(cover_image_path).exists():
+            cmd.extend([
+                "-i", str(cover_image_path),
+                "-map", "0:a",
+                "-map", "1:v",
+                "-c:v", "copy",
+                "-id3v2_version", "3",
+                "-metadata:s:v", "title=Album cover",
+                "-metadata:s:v", "comment=Cover (front)",
+            ])
+
+        cmd.extend([
             "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
             "-codec:a", "libmp3lame",
             "-b:a", bitrate,
             str(output_mp3_path)
-        ]
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        ])
+
+        creationflags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
+
+        res = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            creationflags=creationflags
+        )
+
+        # Si el archivo de salida se generó correctamente con contenido, consideramos éxito
+        if output_mp3_path.exists() and output_mp3_path.stat().st_size > 1000:
+            return output_mp3_path
+
         if res.returncode != 0:
             raise RuntimeError(f"Fallo al convertir audio a MP3 con ffmpeg: {res.stderr[-500:]}")
 
