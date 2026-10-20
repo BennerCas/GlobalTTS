@@ -65,11 +65,20 @@ class AudiobookPipeline:
         self.output_dir = Path(config.output_dir) if config.output_dir else BIBLIOTECA_DIR
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def run(self, progress_callback: Optional[callable] = None) -> JobMetadata:
+    def run(
+        self,
+        progress_callback: Optional[callable] = None,
+        stage_callback: Optional[callable] = None
+    ) -> JobMetadata:
         start_time = time.perf_counter()
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
 
+        def emit_stage(stage: str, desc: str, pct: float):
+            if stage_callback:
+                stage_callback(stage, desc, pct)
+
         # 1. Cargar y parsear documento
+        emit_stage("ingest", "Analizando documento y extrayendo capítulos...", 2.0)
         doc: Document = load_document(self.config.source_file)
 
         # Determinar slug de salida
@@ -78,10 +87,12 @@ class AudiobookPipeline:
         job_id = f"{timestamp_str}_audio_{slug}"
 
         # 2. Segmentar en elocuciones con markup y pausas
+        emit_stage("markup", "Estructurando oraciones y procesando etiquetas de voz...", 5.0)
         build_res = build_utterances(doc, max_chars=350, use_markup=True)
         utterances = build_res.utterances
 
         # 3. Inicializar motor TTS
+        emit_stage("engine", f"Cargando motor de voz '{self.config.voice_key}'...", 7.0)
         engine = PiperTtsEngine(voice_key=self.config.voice_key)
         assembler = AudioAssembler(sample_rate=engine.sample_rate)
 
@@ -92,6 +103,7 @@ class AudiobookPipeline:
         ass_subtitles = self.output_dir / f"{job_id}_subtitles.ass"
 
         # 4. Síntesis y ensamblado a WAV
+        emit_stage("synthesize", "Sintetizando oraciones con modelo local...", 10.0)
         assembly_res = assembler.assemble_to_wav(
             utterances=utterances,
             engine=engine,
@@ -102,13 +114,17 @@ class AudiobookPipeline:
         # 5. Conversión a MP3 final
         out_audio_str = None
         if self.config.generate_audio:
+            emit_stage("normalize", "Normalizando audio con EBU R128 a MP3 alta fidelidad...", 80.0 if self.config.generate_video else 92.0)
             assembler.convert_to_mp3(temp_wav, final_mp3)
             out_audio_str = str(final_mp3.resolve())
 
         # 6. Generación de video con karaoke si se solicitó
         out_video_str = None
         if self.config.generate_video:
+            emit_stage("subtitles", "Generando subtítulos sincronizados estilo karaoke...", 85.0)
             generate_ass_subtitles(assembly_res.sentences, ass_subtitles, title=doc.title)
+
+            emit_stage("video", "Renderizando video MP4 con pantalla negra y subtítulos...", 90.0)
             render_karaoke_video(
                 audio_path=temp_wav,
                 ass_subtitles_path=ass_subtitles,
@@ -125,6 +141,7 @@ class AudiobookPipeline:
 
         total_latency = time.perf_counter() - start_time
         completed_at_str = datetime.now().isoformat()
+        emit_stage("done", "Audiolibro y video generados con éxito.", 100.0)
 
         # 7. Registrar metadatos obligatorios según ESTRUCTURA.md
         metadata = JobMetadata(

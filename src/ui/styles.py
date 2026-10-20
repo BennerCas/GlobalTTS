@@ -23,7 +23,7 @@ QLabel {
 }
 
 QLabel#titleLabel {
-    font-size: 18px;
+    font-size: 19px;
     font-weight: 700;
     color: #58a6ff;
 }
@@ -34,10 +34,31 @@ QLabel#subtitleLabel {
 }
 
 QLabel#footerLabel {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
     color: #484f58;
     letter-spacing: 0.5px;
+}
+
+QLabel#metricTitle {
+    font-size: 11px;
+    font-weight: 600;
+    color: #8b949e;
+    text-transform: uppercase;
+}
+
+QLabel#metricValue {
+    font-size: 15px;
+    font-weight: 700;
+    color: #58a6ff;
+    font-family: 'Consolas', 'Segoe UI', monospace;
+}
+
+QLabel#metricValueActive {
+    font-size: 15px;
+    font-weight: 700;
+    color: #3fb950;
+    font-family: 'Consolas', 'Segoe UI', monospace;
 }
 
 QLineEdit {
@@ -99,8 +120,9 @@ QPushButton#primaryButton {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1f6feb, stop:1 #238636);
     color: #ffffff;
     border: none;
-    padding: 10px 20px;
+    padding: 11px 20px;
     font-size: 14px;
+    border-radius: 8px;
 }
 
 QPushButton#primaryButton:hover {
@@ -110,6 +132,55 @@ QPushButton#primaryButton:hover {
 QPushButton#primaryButton:disabled {
     background-color: #21262d;
     color: #484f58;
+}
+
+QPushButton#actionButton {
+    background-color: #1f6feb;
+    color: #ffffff;
+    border: none;
+    padding: 8px 14px;
+    font-weight: 600;
+    border-radius: 6px;
+}
+
+QPushButton#actionButton:hover {
+    background-color: #388bfd;
+}
+
+QPushButton#secondaryActionButton {
+    background-color: #21262d;
+    color: #c9d1d9;
+    border: 1px solid #30363d;
+    padding: 8px 14px;
+    font-weight: 600;
+    border-radius: 6px;
+}
+
+QPushButton#secondaryActionButton:hover {
+    background-color: #30363d;
+    border-color: #58a6ff;
+    color: #ffffff;
+}
+
+QFrame#cardFrame {
+    background-color: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 12px;
+}
+
+QFrame#metricCard {
+    background-color: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 8px;
+    padding: 8px 12px;
+}
+
+QFrame#resultCard {
+    background-color: #0d1117;
+    border: 1px solid #238636;
+    border-radius: 8px;
+    padding: 12px;
 }
 
 QCheckBox {
@@ -136,11 +207,13 @@ QProgressBar {
     text-align: center;
     background-color: #0d1117;
     color: #ffffff;
-    height: 18px;
+    font-weight: 700;
+    font-family: 'Consolas', monospace;
+    height: 22px;
 }
 
 QProgressBar::chunk {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1f6feb, stop:1 #58a6ff);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1f6feb, stop:1 #2ea043);
     border-radius: 5px;
 }
 
