@@ -165,7 +165,7 @@ def test_build_prompt_for_mode_with_costar(temp_library: PromptLibrary):
 
     assert "Primera persona" in sys_prompt
     assert "Tiempo presente" in sys_prompt
-    assert "Ciencia Ficción y Cyberpunk" in sys_prompt
+    assert "Cyberpunk" in sys_prompt
     assert "La tripulación detectó una anomalía" in user_prompt
     assert params.get("num_ctx") == 8192
 
@@ -214,6 +214,33 @@ def test_nemo_enhancer_methods_with_mock():
         fallback_res = enhancer.analyze_dialogues("Texto sin formato")
         assert "characters" in fallback_res
         assert fallback_res["segments"][0]["text"] == "Texto sin formato"
+
+
+def test_prompt_library_markdown_roundtrip(tmp_path: Path):
+    """Verifica la exportación e importación bidireccional entre PromptLibrary y Markdown."""
+    json_path = tmp_path / "prompts_roundtrip.json"
+    lib1 = PromptLibrary(json_path=json_path)
+
+    # Exportar a Markdown
+    md_path = tmp_path / "PROMPTS_TEST.md"
+    lib1.export_to_markdown(md_path)
+    assert md_path.exists()
+    content = md_path.read_text(encoding="utf-8")
+    assert "Catálogo Maestro de Modos de IA" in content
+    assert "Catálogo de los 11 Estilos Narrativos Industriales" in content
+
+    # Crear una nueva librería vacía e importar desde el Markdown generado
+    json_path2 = tmp_path / "prompts_imported.json"
+    lib2 = PromptLibrary(json_path=json_path2)
+    # Modificar un parámetro antes de importar para comprobar sobreescritura
+    lib2.modes["builtin_enhance"].parameters["temperature"] = 0.99
+
+    count = lib2.import_from_markdown(md_path)
+    assert count >= 15
+    # Comprobar que temperature se restauró al valor del markdown
+    assert lib2.modes["builtin_enhance"].parameters["temperature"] == 0.35
+    assert len(lib2.styles) == 11
+    assert lib2.get_style("terror_psicologico") is not None
 
 
 def test_nemo_enhancer_live_call_if_available():

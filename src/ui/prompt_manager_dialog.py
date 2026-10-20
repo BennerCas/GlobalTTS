@@ -1,6 +1,7 @@
 """Diálogo y Widget visual para la gestión de Prompts Maestros y Estilos Narrativos."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -26,6 +27,9 @@ from PyQt6.QtWidgets import (
 
 from src.ai.prompt_library import NarrativeStyleDef, PromptItem, PromptLibrary
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+PROMPTS_MD_FILE = PROJECT_ROOT / "PROMPTS_MAESTROS.md"
+
 
 class PromptManagerWidget(QWidget):
     """Widget embebible para ver, editar, duplicar, agregar y restaurar Prompts Maestros."""
@@ -45,11 +49,11 @@ class PromptManagerWidget(QWidget):
     def _init_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(12)
+        layout.setSpacing(10)
 
         # 1. Cabecera
         header_lay = QVBoxLayout()
-        title = QLabel("🧠 Catálogo Maestro de Prompts y Estilos Narrativos")
+        title = QLabel("Catálogo Maestro de Prompts y Estilos Narrativos")
         title.setObjectName("titleLabel")
         subtitle = QLabel("Ajusta los System Prompts bajo Meta-Prompting CO-STAR y parámetros de Mistral NeMo.")
         subtitle.setObjectName("subtitleLabel")
@@ -60,18 +64,19 @@ class PromptManagerWidget(QWidget):
         # 2. Barra de Selección y Operaciones Rápidas
         sel_box = QGroupBox("Selección de Prompt o Estilo")
         sel_lay = QHBoxLayout(sel_box)
+        sel_lay.setSpacing(8)
 
         self.combo_items = QComboBox()
         self.combo_items.currentIndexChanged.connect(self._on_item_selected)
         sel_lay.addWidget(QLabel("Elemento Activo:"))
         sel_lay.addWidget(self.combo_items, stretch=1)
 
-        self.btn_duplicate = QPushButton("📋 Duplicar como Personalizado")
+        self.btn_duplicate = QPushButton("[ + ] Duplicar como Personalizado")
         self.btn_duplicate.setObjectName("actionButton")
         self.btn_duplicate.clicked.connect(self._duplicate_current)
         sel_lay.addWidget(self.btn_duplicate)
 
-        self.btn_delete = QPushButton("🗑️ Eliminar")
+        self.btn_delete = QPushButton("[ × ] Eliminar")
         self.btn_delete.setObjectName("secondaryActionButton")
         self.btn_delete.clicked.connect(self._delete_current)
         sel_lay.addWidget(self.btn_delete)
@@ -81,12 +86,13 @@ class PromptManagerWidget(QWidget):
         # 3. Formulario de Edición
         form_box = QGroupBox("Editor de Directrices y Meta-Prompting")
         form_lay = QFormLayout(form_box)
+        form_lay.setSpacing(8)
 
         self.edit_name = QLineEdit()
         form_lay.addRow("Nombre descriptivo:", self.edit_name)
 
         self.lbl_id = QLabel("")
-        self.lbl_id.setStyleSheet("color: #8b949e; font-family: monospace; font-weight: bold;")
+        self.lbl_id.setStyleSheet("color: #64748b; font-family: Consolas, monospace; font-weight: bold;")
         form_lay.addRow("Identificador (ID):", self.lbl_id)
 
         self.edit_description = QLineEdit()
@@ -96,15 +102,14 @@ class PromptManagerWidget(QWidget):
         self.edit_system = QTextEdit()
         self.edit_system.setPlaceholderText("System Prompt estructurado (CO-STAR, reglas duras, etiquetas TTS)...")
         self.edit_system.setStyleSheet("""
-            font-family: Consolas, 'Segoe UI', monospace;
+            font-family: Consolas, monospace;
             font-size: 12px;
-            background-color: #0d1117;
-            color: #58a6ff;
-            border: 1px solid #30363d;
-            border-radius: 6px;
+            background-color: #0b0f16;
+            color: #38bdf8;
+            border: 1px solid #1e2633;
+            border-radius: 5px;
         """)
         self.edit_system.setMinimumHeight(180)
-        # Scroll invisible para el editor
         self.edit_system.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 0px; height: 0px; }")
         form_lay.addRow("System Prompt:", self.edit_system)
 
@@ -115,6 +120,7 @@ class PromptManagerWidget(QWidget):
 
         # Hiperparámetros NeMo
         params_row = QHBoxLayout()
+        params_row.setSpacing(8)
         self.spin_temp = QDoubleSpinBox()
         self.spin_temp.setRange(0.0, 1.5)
         self.spin_temp.setSingleStep(0.05)
@@ -141,17 +147,30 @@ class PromptManagerWidget(QWidget):
         form_lay.addRow("Hiperparámetros IA:", params_row)
         layout.addWidget(form_box, stretch=1)
 
-        # 4. Barra de Acciones Inferior
+        # 4. Barra de Acciones Inferior con Sincronización Markdown
         bottom_bar = QHBoxLayout()
+        bottom_bar.setSpacing(8)
 
-        self.btn_reset = QPushButton("🔄 Restaurar Valores de Fábrica")
+        self.btn_reset = QPushButton("[ ⟳ ] Restaurar Fábrica")
         self.btn_reset.setObjectName("secondaryActionButton")
         self.btn_reset.clicked.connect(self._reset_defaults)
         bottom_bar.addWidget(self.btn_reset)
 
+        self.btn_sync_md = QPushButton("[ ⟳ ] Sincronizar desde PROMPTS_MAESTROS.md")
+        self.btn_sync_md.setObjectName("secondaryActionButton")
+        self.btn_sync_md.setToolTip("Carga y aplica de inmediato los prompts y estilos editados en el documento Markdown")
+        self.btn_sync_md.clicked.connect(self._sync_from_markdown)
+        bottom_bar.addWidget(self.btn_sync_md)
+
+        self.btn_export_md = QPushButton("[ ↗ ] Exportar a PROMPTS_MAESTROS.md")
+        self.btn_export_md.setObjectName("secondaryActionButton")
+        self.btn_export_md.setToolTip("Guarda los prompts y estilos actuales al documento Markdown maestro")
+        self.btn_export_md.clicked.connect(self._export_to_markdown)
+        bottom_bar.addWidget(self.btn_export_md)
+
         bottom_bar.addStretch()
 
-        self.btn_save = QPushButton("💾 Guardar Cambios")
+        self.btn_save = QPushButton("[ ⤓ ] Guardar Cambios")
         self.btn_save.setObjectName("primaryButton")
         self.btn_save.clicked.connect(self._save_changes)
         bottom_bar.addWidget(self.btn_save)
@@ -353,13 +372,39 @@ class PromptManagerWidget(QWidget):
             self.prompts_updated.emit()
             QMessageBox.information(self, "Restaurado", "Prompts maestros restaurados a valores de fábrica.")
 
+    def _sync_from_markdown(self) -> None:
+        """Sincroniza y recarga los prompts y estilos directamente desde PROMPTS_MAESTROS.md."""
+        try:
+            count = self.library.import_from_markdown(PROMPTS_MD_FILE)
+            self._populate_selector()
+            self.prompts_updated.emit()
+            QMessageBox.information(
+                self,
+                "Sincronización Completada",
+                f"Se han sincronizado y actualizado exitosamente {count} modos y estilos desde PROMPTS_MAESTROS.md.",
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Error de Sincronización", f"No se pudo sincronizar desde Markdown:\n{e}")
+
+    def _export_to_markdown(self) -> None:
+        """Exporta la configuración actual a PROMPTS_MAESTROS.md."""
+        try:
+            self.library.export_to_markdown(PROMPTS_MD_FILE)
+            QMessageBox.information(
+                self,
+                "Exportación Completada",
+                "El catálogo maestro se ha exportado y actualizado exitosamente en PROMPTS_MAESTROS.md.",
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Error al Exportar", f"No se pudo exportar a Markdown:\n{e}")
+
 
 class PromptManagerDialog(QDialog):
     """Diálogo emergente para ver, editar, duplicar y restaurar Prompts Maestros."""
 
     def __init__(self, library: Optional[PromptLibrary] = None, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self.setWindowTitle("🧠 Gestor de Prompts Maestros e Inferencia Local")
+        self.setWindowTitle("Gestor de Prompts Maestros e Inferencia Local")
         self.resize(850, 650)
         self.setModal(True)
 

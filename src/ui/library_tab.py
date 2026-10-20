@@ -1,22 +1,28 @@
 """Pestaña de Biblioteca y Reproductor Integrado para GlobalTTS.
 
-Permite explorar los audiolibros generados, reproducir audio con controles multimedia,
-visualizar portadas y acceder a las opciones de subida a YouTube y Spotify.
+Diseño Ejecutivo Obsidian & Titanium:
+- Cero emojis: sustituidos por glifos de línea [ ► ], [ || ], [ ■ ], [ ⟳ ], [ ↗ ].
+- Reproductor multimedia de alta fidelidad con slider de precisión y telemetría de tiempo.
+- Selector de obras con metadatos técnicos completos (Voz, oraciones, duración, EBU R128).
+- Gestión y lanzamiento de Video Karaoke MP4 y masters de audio MP3/FLAC.
+- Acceso sobrio y profesional a YouTube Studio y Spotify for Podcasters.
 """
 from __future__ import annotations
 
 import json
 import os
 import subprocess
+import webbrowser
 from datetime import timedelta
 from pathlib import Path
 from typing import Optional
 
-from PyQt6.QtCore import QTime, QUrl, Qt
-from PyQt6.QtGui import QColor, QFont, QPixmap
+from PyQt6.QtCore import QUrl, Qt
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtWidgets import (
     QFrame,
+    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -44,6 +50,7 @@ class LibraryTab(QWidget):
         self.audio_output = QAudioOutput(self)
         self.player.setAudioOutput(self.audio_output)
 
+        self.books: list[dict] = []
         self.selected_book_data: Optional[dict] = None
         self.init_ui()
         self.setup_player_events()
@@ -51,97 +58,107 @@ class LibraryTab(QWidget):
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(16, 16, 16, 16)
-        main_layout.setSpacing(12)
+        main_layout.setContentsMargins(14, 14, 14, 14)
+        main_layout.setSpacing(10)
 
-        # Barra superior con buscador y botón de refrescar
+        # Barra superior con buscador y accesos de carpeta
         top_bar = QHBoxLayout()
-        self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("🔍 Buscar audiolibro en la biblioteca...")
-        self.search_edit.textChanged.connect(self.filter_books)
-        top_bar.addWidget(self.search_edit)
+        top_bar.setSpacing(8)
 
-        refresh_btn = QPushButton("🔄 Actualizar")
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText("[ ⌕ ] Buscar en la biblioteca por título o autor...")
+        self.search_edit.textChanged.connect(self.filter_books)
+        top_bar.addWidget(self.search_edit, stretch=1)
+
+        refresh_btn = QPushButton("[ ⟳ ] Actualizar")
         refresh_btn.setObjectName("secondaryActionButton")
         refresh_btn.clicked.connect(self.refresh_library)
         top_bar.addWidget(refresh_btn)
 
-        open_folder_btn = QPushButton("📂 Abrir Biblioteca")
+        open_folder_btn = QPushButton("[ ↗ ] Abrir Carpeta Biblioteca")
         open_folder_btn.setObjectName("secondaryActionButton")
         open_folder_btn.clicked.connect(lambda: os.startfile(BIBLIOTECA_DIR) if BIBLIOTECA_DIR.exists() else None)
         top_bar.addWidget(open_folder_btn)
 
         main_layout.addLayout(top_bar)
 
-        # Splitter central: Lista de libros a la izquierda, detalles y reproductor a la derecha
+        # Splitter central: Lista de obras (izq) y Reproductor Ejecutivo (der)
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # Tabla de libros
+        # 1. Tabla de audiolibros
         self.table = QTableWidget()
         self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["Título / Carpeta", "Duración", "Fecha", "Formatos"])
+        self.table.setHorizontalHeaderLabels(["TÍTULO / OBRA", "DURACIÓN", "FECHA", "FORMATOS"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.itemSelectionChanged.connect(self.on_book_selected)
         splitter.addWidget(self.table)
 
-        # Panel de Detalles y Reproductor (Derecha)
+        # 2. Panel de Detalles y Reproductor Multimedia Ejecutivo
         self.detail_panel = QFrame()
         self.detail_panel.setObjectName("cardFrame")
         detail_layout = QVBoxLayout(self.detail_panel)
         detail_layout.setSpacing(10)
+        detail_layout.setContentsMargins(14, 14, 14, 14)
 
-        self.lbl_book_title = QLabel("Selecciona un audiolibro")
+        # Título y metadatos del libro
+        self.lbl_book_title = QLabel("Selecciona un audiolibro del catálogo")
         self.lbl_book_title.setObjectName("titleLabel")
         self.lbl_book_title.setWordWrap(True)
         detail_layout.addWidget(self.lbl_book_title)
 
-        self.lbl_book_meta = QLabel("Metadatos no disponibles")
+        self.lbl_book_meta = QLabel("Metadatos técnicos: Selecciona un elemento para inspeccionar.")
         self.lbl_book_meta.setObjectName("subtitleLabel")
         self.lbl_book_meta.setWordWrap(True)
         detail_layout.addWidget(self.lbl_book_meta)
 
-        # Portada / Miniatura
-        self.cover_label = QLabel()
+        # Portada / Carátula
+        self.cover_label = QLabel("[ Sin Portada ]")
         self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.cover_label.setFixedSize(160, 160)
-        self.cover_label.setStyleSheet("background-color: #161b22; border: 1px solid #30363d; border-radius: 8px;")
+        self.cover_label.setFixedSize(170, 170)
+        self.cover_label.setStyleSheet(
+            "background-color: #0b0f16; border: 1px solid #1e2633; border-radius: 6px; color: #475569;"
+        )
         detail_layout.addWidget(self.cover_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        # --- Controles del Reproductor Integrado ---
+        # Caja de Reproducción Multimedia
         player_box = QFrame()
         player_box.setObjectName("metricCard")
         p_lay = QVBoxLayout(player_box)
         p_lay.setSpacing(8)
 
-        # Barra de progreso de audio (Slider)
+        # Slider de posición y marcas de tiempo en monospace
         slider_row = QHBoxLayout()
+        slider_row.setSpacing(8)
         self.lbl_cur_time = QLabel("00:00")
-        self.lbl_cur_time.setStyleSheet("font-family: Consolas; font-size: 11px;")
+        self.lbl_cur_time.setStyleSheet("font-family: Consolas, monospace; font-size: 11px; color: #38bdf8;")
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setRange(0, 0)
         self.slider.sliderMoved.connect(self.set_position)
         self.lbl_total_time = QLabel("00:00")
-        self.lbl_total_time.setStyleSheet("font-family: Consolas; font-size: 11px;")
+        self.lbl_total_time.setStyleSheet("font-family: Consolas, monospace; font-size: 11px; color: #64748b;")
         slider_row.addWidget(self.lbl_cur_time)
         slider_row.addWidget(self.slider)
         slider_row.addWidget(self.lbl_total_time)
         p_lay.addLayout(slider_row)
 
-        # Botones de control y volumen
+        # Botonera de control de transporte y volumen
         controls_row = QHBoxLayout()
-        self.btn_play = QPushButton("▶️ Play")
+        controls_row.setSpacing(8)
+
+        self.btn_play = QPushButton("[ ► ] Reproducir")
         self.btn_play.setObjectName("primaryButton")
         self.btn_play.clicked.connect(self.toggle_play)
         controls_row.addWidget(self.btn_play)
 
-        self.btn_stop = QPushButton("⏹️ Stop")
+        self.btn_stop = QPushButton("[ ■ ] Detener")
         self.btn_stop.setObjectName("secondaryActionButton")
         self.btn_stop.clicked.connect(self.stop_playback)
         controls_row.addWidget(self.btn_stop)
 
-        lbl_vol = QLabel("🔊")
+        lbl_vol = QLabel("[ Vol ]")
+        lbl_vol.setStyleSheet("font-family: Consolas, monospace; font-size: 11px; color: #64748b;")
         self.vol_slider = QSlider(Qt.Orientation.Horizontal)
         self.vol_slider.setRange(0, 100)
         self.vol_slider.setValue(80)
@@ -153,13 +170,15 @@ class LibraryTab(QWidget):
         p_lay.addLayout(controls_row)
         detail_layout.addWidget(player_box)
 
-        # Botones de Acción Externa
+        # Botones de Acción de Archivos
         actions_grid = QHBoxLayout()
-        self.btn_open_video = QPushButton("🎬 Ver Video Karaoke")
+        actions_grid.setSpacing(8)
+
+        self.btn_open_video = QPushButton("[ ► ] Ver Video Karaoke")
         self.btn_open_video.setObjectName("actionButton")
         self.btn_open_video.clicked.connect(self.open_video)
 
-        self.btn_open_folder = QPushButton("📂 Abrir Carpeta")
+        self.btn_open_folder = QPushButton("[ ↗ ] Abrir Carpeta del Libro")
         self.btn_open_folder.setObjectName("secondaryActionButton")
         self.btn_open_folder.clicked.connect(self.open_current_folder)
 
@@ -167,23 +186,27 @@ class LibraryTab(QWidget):
         actions_grid.addWidget(self.btn_open_folder)
         detail_layout.addLayout(actions_grid)
 
-        # Botones de Exportación / Subida
-        upload_grid = QHBoxLayout()
-        self.btn_youtube = QPushButton("🚀 Subir a YouTube")
-        self.btn_youtube.setStyleSheet("background-color: #c4302b; color: white; border-radius: 6px; padding: 6px;")
+        # Módulo de Distribución Ejecutiva
+        dist_group = QGroupBox("Distribución y Plataformas")
+        dist_lay = QHBoxLayout(dist_group)
+        dist_lay.setContentsMargins(10, 8, 10, 8)
+        dist_lay.setSpacing(8)
+
+        self.btn_youtube = QPushButton("[ ↗ ] Publicar en YouTube Studio")
+        self.btn_youtube.setObjectName("brandButton")
         self.btn_youtube.clicked.connect(self.open_youtube_dialog)
 
-        self.btn_spotify = QPushButton("🎧 Subir a Spotify / Podcasts")
-        self.btn_spotify.setStyleSheet("background-color: #1DB954; color: black; font-weight: bold; border-radius: 6px; padding: 6px;")
+        self.btn_spotify = QPushButton("[ ↗ ] Publicar en Spotify / Podcasts")
+        self.btn_spotify.setObjectName("brandButton")
         self.btn_spotify.clicked.connect(self.open_spotify_dialog)
 
-        upload_grid.addWidget(self.btn_youtube)
-        upload_grid.addWidget(self.btn_spotify)
-        detail_layout.addLayout(upload_grid)
+        dist_lay.addWidget(self.btn_youtube)
+        dist_lay.addWidget(self.btn_spotify)
+        detail_layout.addWidget(dist_group)
 
         detail_layout.addStretch()
         splitter.addWidget(self.detail_panel)
-        splitter.setSizes([450, 400])
+        splitter.setSizes([500, 440])
 
         main_layout.addWidget(splitter)
 
@@ -192,12 +215,11 @@ class LibraryTab(QWidget):
         self.player.durationChanged.connect(self.on_duration_changed)
 
     def refresh_library(self):
-        self.books: list[dict] = []
+        self.books = []
         if not BIBLIOTECA_DIR.exists():
             return
 
-        # Escanear subcarpetas en biblioteca/
-        for item in BIBLIOTECA_DIR.iterdir():
+        for item in sorted(BIBLIOTECA_DIR.iterdir(), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True):
             if item.is_dir():
                 meta_files = list(item.glob("*_metadata.json"))
                 meta = {}
@@ -222,7 +244,7 @@ class LibraryTab(QWidget):
                     "mp4": mp4_files[0] if mp4_files else None,
                     "master": flac_files[0] if flac_files else None,
                     "cover": cover_files[0] if cover_files else None,
-                    "meta": meta
+                    "meta": meta,
                 })
 
         self.filter_books(self.search_edit.text())
@@ -251,11 +273,14 @@ class LibraryTab(QWidget):
             # Col 2: Fecha
             self.table.setItem(row, 2, QTableWidgetItem(b["created"][:10] if b["created"] else "--"))
 
-            # Col 3: Formatos
+            # Col 3: Formatos con insignias de texto sobrias
             formats = []
-            if b["mp3"]: formats.append("🎵 MP3")
-            if b["master"]: formats.append("💎 FLAC")
-            if b["mp4"]: formats.append("🎬 MP4")
+            if b["mp3"]:
+                formats.append("[ MP3 ]")
+            if b["master"]:
+                formats.append("[ FLAC ]")
+            if b["mp4"]:
+                formats.append("[ MP4 ]")
             self.table.setItem(row, 3, QTableWidgetItem(" ".join(formats)))
 
         if self.table.rowCount() > 0:
@@ -272,20 +297,24 @@ class LibraryTab(QWidget):
         # Actualizar UI de detalles
         self.lbl_book_title.setText(book_data["title"])
         meta = book_data["meta"]
+        dur = meta.get("duration_seconds", 0)
+        dur_str = str(timedelta(seconds=int(dur))) if dur else "--"
         meta_text = (
-            f"Voz: {meta.get('voice_key', 'Desconocida')} | "
-            f"Oraciones: {meta.get('total_utterances', '--')} | "
-            f"Caracteres: {meta.get('total_characters', '--')}\n"
-            f"Carpeta: {book_data['folder'].name}"
+            f"Voz: {meta.get('voice_key', 'Desconocida')}  •  "
+            f"Oraciones: {meta.get('total_utterances', '--')}  •  "
+            f"Duración: {dur_str}  •  Normalización: EBU R128 (-16 LUFS)\n"
+            f"Directorio: {book_data['folder'].name}"
         )
         self.lbl_book_meta.setText(meta_text)
 
         # Portada
         if book_data["cover"] and book_data["cover"].exists():
-            pix = QPixmap(str(book_data["cover"])).scaled(160, 160, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            pix = QPixmap(str(book_data["cover"])).scaled(
+                170, 170, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+            )
             self.cover_label.setPixmap(pix)
         else:
-            self.cover_label.setText("Sin portada")
+            self.cover_label.setText("[ Sin Portada ]")
 
         # Configurar audio en reproductor
         if book_data["mp3"] and book_data["mp3"].exists():
@@ -299,14 +328,14 @@ class LibraryTab(QWidget):
     def toggle_play(self):
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.player.pause()
-            self.btn_play.setText("▶️ Play")
+            self.btn_play.setText("[ ► ] Reproducir")
         else:
             self.player.play()
-            self.btn_play.setText("⏸️ Pausa")
+            self.btn_play.setText("[ || ] Pausa")
 
     def stop_playback(self):
         self.player.stop()
-        self.btn_play.setText("▶️ Play")
+        self.btn_play.setText("[ ► ] Reproducir")
 
     def on_position_changed(self, pos: int):
         self.slider.setValue(pos)
@@ -333,27 +362,26 @@ class LibraryTab(QWidget):
         b = self.selected_book_data
         mp4_path = b.get("mp4")
         if not mp4_path or not mp4_path.exists():
-            QMessageBox.warning(self, "Sin Video", "Este audiolibro no tiene un video generado para YouTube.")
+            QMessageBox.warning(self, "Sin Video", "Este audiolibro no tiene un video karaoke generado.")
             return
 
         title_text = f"Audiolibro Completo | {b['title']} (Voz IA en Español)"
         desc_text = (
-            f"Audiolibro completo de '{b['title']}', narrado con inteligencia artificial y alta fidelidad.\n\n"
-            f"⏱️ Marcas de tiempo:\n00:00 Inicio\n\n"
+            f"Audiolibro completo de '{b['title']}', narrado con inteligencia artificial local y alta fidelidad sonora.\n\n"
+            f"Marcas de tiempo:\n00:00 Inicio\n\n"
             f"#Audiolibro #{b['title'].replace(' ', '')} #TTS #Literatura\n"
             f"HUMAN AI SYNERGY BY BENNER CASTILLO - 2026®"
         )
 
         msg = (
-            f"🚀 PREPARACIÓN PARA YOUTUBE:\n\n"
+            f"PREPARACIÓN PARA YOUTUBE STUDIO:\n\n"
             f"Archivo a subir:\n{mp4_path.name}\n\n"
             f"Título sugerido:\n{title_text}\n\n"
             f"Descripción y Marcas de Tiempo:\n{desc_text}\n\n"
-            f"¿Deseas abrir YouTube Studio en tu navegador y la carpeta con el archivo?"
+            f"¿Deseas abrir YouTube Studio en tu navegador y abrir la carpeta del libro?"
         )
-        reply = QMessageBox.question(self, "Subir a YouTube", msg)
+        reply = QMessageBox.question(self, "Publicar en YouTube", msg)
         if reply == QMessageBox.StandardButton.Yes:
-            import webbrowser
             webbrowser.open("https://studio.youtube.com")
             os.startfile(b["folder"])
 
@@ -363,16 +391,15 @@ class LibraryTab(QWidget):
         b = self.selected_book_data
         mp3_path = b.get("mp3")
         if not mp3_path or not mp3_path.exists():
-            QMessageBox.warning(self, "Sin Audio", "No se encontró el archivo MP3 para podcast.")
+            QMessageBox.warning(self, "Sin Audio Master", "No se encontró el archivo MP3 para podcast.")
             return
 
         msg = (
-            f"🎧 PREPARACIÓN PARA SPOTIFY / PODCASTS:\n\n"
+            f"PREPARACIÓN PARA SPOTIFY / PODCASTS:\n\n"
             f"Archivo Master MP3:\n{mp3_path.name} (Normalizado EBU R128 a 256k)\n\n"
             f"¿Deseas abrir Spotify for Podcasters en tu navegador y la carpeta con el audio?"
         )
-        reply = QMessageBox.question(self, "Subir a Spotify", msg)
+        reply = QMessageBox.question(self, "Publicar en Spotify", msg)
         if reply == QMessageBox.StandardButton.Yes:
-            import webbrowser
             webbrowser.open("https://podcasters.spotify.com")
             os.startfile(b["folder"])

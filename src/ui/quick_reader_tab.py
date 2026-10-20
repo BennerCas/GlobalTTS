@@ -198,12 +198,12 @@ class QuickReaderTab(QWidget):
 
         # Cabecera
         header_row = QHBoxLayout()
-        title_lbl = QLabel("⚡ Lector Rápido en Tiempo Real")
+        title_lbl = QLabel("Lector Rápido en Tiempo Real")
         title_lbl.setObjectName("titleLabel")
         header_row.addWidget(title_lbl)
 
-        self.lbl_status = QLabel("● Listo (Motor Piper Local Activo)")
-        self.lbl_status.setStyleSheet("color: #3fb950; font-weight: 600; font-size: 11px;")
+        self.lbl_status = QLabel("[ ACTIVO ] Motor Piper TTS Local (DirectML)")
+        self.lbl_status.setStyleSheet("color: #22c55e; font-weight: 700; font-size: 11px; font-family: Consolas, monospace;")
         header_row.addWidget(self.lbl_status, alignment=Qt.AlignmentFlag.AlignRight)
         r_lay.addLayout(header_row)
 
@@ -241,7 +241,7 @@ class QuickReaderTab(QWidget):
         # Barra de información de texto
         info_row = QHBoxLayout()
         self.lbl_counter = QLabel("Caracteres: 0 | Palabras: 0 | Duración est.: ~0s")
-        self.lbl_counter.setStyleSheet("color: #8b949e; font-size: 11px;")
+        self.lbl_counter.setStyleSheet("color: #64748b; font-size: 11px; font-family: Consolas, monospace;")
         info_row.addWidget(self.lbl_counter)
         r_lay.addLayout(info_row)
 
@@ -249,27 +249,27 @@ class QuickReaderTab(QWidget):
         btns_row = QHBoxLayout()
         btns_row.setSpacing(6)
 
-        self.btn_play = QPushButton("▶️ Leer en Voz Alta")
+        self.btn_play = QPushButton("[ ► ] Leer en Voz Alta")
         self.btn_play.setObjectName("primaryButton")
         self.btn_play.clicked.connect(self.play_text)
         btns_row.addWidget(self.btn_play)
 
-        self.btn_stop = QPushButton("⏹️ Detener")
+        self.btn_stop = QPushButton("[ ■ ] Detener")
         self.btn_stop.setObjectName("secondaryActionButton")
         self.btn_stop.clicked.connect(self.stop_text)
         btns_row.addWidget(self.btn_stop)
 
-        self.btn_paste = QPushButton("📋 Pegar")
+        self.btn_paste = QPushButton("[ + ] Pegar Portapapeles")
         self.btn_paste.setObjectName("actionButton")
         self.btn_paste.clicked.connect(self.paste_clipboard)
         btns_row.addWidget(self.btn_paste)
 
-        self.btn_clear = QPushButton("🗑️ Limpiar")
+        self.btn_clear = QPushButton("[ × ] Limpiar Texto")
         self.btn_clear.setObjectName("secondaryActionButton")
         self.btn_clear.clicked.connect(self.text_edit.clear)
         btns_row.addWidget(self.btn_clear)
 
-        self.btn_save_mp3 = QPushButton("💾 Guardar MP3")
+        self.btn_save_mp3 = QPushButton("[ ⤓ ] Guardar MP3")
         self.btn_save_mp3.setObjectName("secondaryActionButton")
         self.btn_save_mp3.clicked.connect(self.save_text_mp3)
         btns_row.addWidget(self.btn_save_mp3)
@@ -278,7 +278,7 @@ class QuickReaderTab(QWidget):
         left_col.addWidget(reader_box, stretch=3)
 
         # 2. Tarjeta de Expresividad y Modo Narración (Mistral NeMo Local)
-        ai_box = QGroupBox("🧠 Expresividad y Modo Narración (Mistral NeMo 12B Local)")
+        ai_box = QGroupBox("Expresividad y Modo Narración (Mistral NeMo 12B Local)")
         ai_lay = QVBoxLayout(ai_box)
         ai_lay.setContentsMargins(10, 10, 10, 10)
         ai_lay.setSpacing(8)
@@ -327,7 +327,7 @@ class QuickReaderTab(QWidget):
         self.combo_tense.addItem("Futuro", "futuro")
         row2.addWidget(self.combo_tense)
 
-        self.btn_apply_ai = QPushButton("✨ Aplicar Expresividad / Narrar al Texto")
+        self.btn_apply_ai = QPushButton("[ ► ] Aplicar Expresividad / Narrar")
         self.btn_apply_ai.setObjectName("actionButton")
         self.btn_apply_ai.clicked.connect(self.apply_ai_enhancement)
         row2.addWidget(self.btn_apply_ai)
@@ -346,7 +346,7 @@ class QuickReaderTab(QWidget):
         right_col.setSpacing(10)
 
         # 1. Configuración de Voz y Audio
-        voice_box = QGroupBox("🎙️ Motor de Voz Local & Modulación")
+        voice_box = QGroupBox("Motor de Voz Local & Modulación")
         v_lay = QVBoxLayout(voice_box)
         v_lay.setContentsMargins(10, 10, 10, 10)
         v_lay.setSpacing(8)
@@ -357,7 +357,7 @@ class QuickReaderTab(QWidget):
         self.populate_voices()
         v_row1.addWidget(self.voice_combo, stretch=1)
 
-        self.btn_test_voice = QPushButton("🔊 Probar")
+        self.btn_test_voice = QPushButton("[ ► ] Probar Muestra")
         self.btn_test_voice.setObjectName("secondaryActionButton")
         self.btn_test_voice.clicked.connect(self.test_voice_sample)
         v_row1.addWidget(self.btn_test_voice)
@@ -394,7 +394,7 @@ class QuickReaderTab(QWidget):
         dir_row.addWidget(QLabel("Guardar en:"))
         self.dir_edit = QLineEdit(self.config.get("save_directory", str(Path.home() / "Downloads" / "TTS_Audios")))
         dir_row.addWidget(self.dir_edit, stretch=1)
-        btn_browse_dir = QPushButton("📂")
+        btn_browse_dir = QPushButton("[ ↗ ]")
         btn_browse_dir.setObjectName("secondaryActionButton")
         btn_browse_dir.clicked.connect(self.browse_save_dir)
         dir_row.addWidget(btn_browse_dir)
@@ -403,13 +403,13 @@ class QuickReaderTab(QWidget):
         right_col.addWidget(voice_box)
 
         # 2. Atajos Globales de Teclado
-        hk_box = QGroupBox("⌨️ Atajos Globales Activos (AutoHotkey v2)")
+        hk_box = QGroupBox("Atajos Globales Activos (AutoHotkey v2)")
         hk_lay = QVBoxLayout(hk_box)
         hk_lay.setContentsMargins(10, 10, 10, 10)
         hk_lay.setSpacing(6)
 
-        self.lbl_ahk_status = QLabel("🟢 Servicio de Atajos Globales Operativo")
-        self.lbl_ahk_status.setStyleSheet("color: #3fb950; font-weight: bold; font-size: 11px;")
+        self.lbl_ahk_status = QLabel("[ ACTIVO ] Servicio de Captura Global Operativo")
+        self.lbl_ahk_status.setStyleSheet("color: #22c55e; font-weight: bold; font-size: 11px; font-family: Consolas, monospace;")
         hk_lay.addWidget(self.lbl_ahk_status)
 
         shortcuts_info = QLabel(
@@ -420,10 +420,10 @@ class QuickReaderTab(QWidget):
             "• Escape (Esc): Detener reproducción activa.\n"
             "• Alt + Rueda del Ratón: Ajustar velocidad al vuelo."
         )
-        shortcuts_info.setStyleSheet("color: #8b949e; font-size: 11px; line-height: 1.4;")
+        shortcuts_info.setStyleSheet("color: #64748b; font-size: 11px; line-height: 1.4;")
         hk_lay.addWidget(shortcuts_info)
 
-        btn_reload_ahk = QPushButton("🔄 Reiniciar Servicio de Atajos")
+        btn_reload_ahk = QPushButton("[ ⟳ ] Reiniciar Servicio de Atajos")
         btn_reload_ahk.setObjectName("secondaryActionButton")
         btn_reload_ahk.clicked.connect(self.restart_ahk_service)
         hk_lay.addWidget(btn_reload_ahk, alignment=Qt.AlignmentFlag.AlignLeft)
@@ -431,7 +431,7 @@ class QuickReaderTab(QWidget):
         right_col.addWidget(hk_box)
 
         # 3. Preferencias del Sistema
-        sys_box = QGroupBox("⚙️ Sistema, Arranque & Metadatos")
+        sys_box = QGroupBox("Sistema, Arranque & Metadatos")
         s_lay = QVBoxLayout(sys_box)
         s_lay.setContentsMargins(10, 10, 10, 10)
         s_lay.setSpacing(6)
@@ -445,12 +445,13 @@ class QuickReaderTab(QWidget):
         s_lay.addWidget(self.chk_translate)
 
         lbl_sig = QLabel("Firma en Metadatos: HUMAN AI SYNERGY BY BENNER CASTILLO - 2026®")
-        lbl_sig.setStyleSheet("color: #58a6ff; font-size: 11px; font-weight: 600;")
+        lbl_sig.setStyleSheet("color: #38bdf8; font-size: 11px; font-weight: 700; letter-spacing: 0.5px;")
         s_lay.addWidget(lbl_sig)
 
-        btn_save_cfg = QPushButton("💾 Guardar Configuración Predeterminada")
+        btn_save_cfg = QPushButton("[ ⤓ ] Guardar Configuración Predeterminada")
         btn_save_cfg.setObjectName("primaryButton")
         btn_save_cfg.clicked.connect(self.save_all_settings)
+        s_lay.addWidget(btn_save_cfg)
         s_lay.addWidget(btn_save_cfg)
 
         right_col.addWidget(sys_box)
@@ -556,9 +557,9 @@ class QuickReaderTab(QWidget):
         volume = self.vol_slider.value() / 100.0
 
         self.btn_play.setEnabled(False)
-        self.btn_play.setText("🔊 Reproduciendo...")
-        self.lbl_status.setText("● Reproduciendo en voz alta...")
-        self.lbl_status.setStyleSheet("color: #e3b341; font-weight: 600;")
+        self.btn_play.setText("[ ► ] Reproduciendo...")
+        self.lbl_status.setText("[ EN REPRODUCCIÓN ] Audio en curso...")
+        self.lbl_status.setStyleSheet("color: #38bdf8; font-weight: 700; font-family: Consolas, monospace;")
 
         self.play_worker = TtsPlayWorker(text=text, voice_key=voice_key, speed=speed, volume=volume)
         self.play_worker.signals.finished.connect(self.on_play_finished)
@@ -585,9 +586,9 @@ class QuickReaderTab(QWidget):
 
     def on_play_finished(self):
         self.btn_play.setEnabled(True)
-        self.btn_play.setText("▶️ Leer en Voz Alta")
-        self.lbl_status.setText("● Listo (Motor Piper Local Activo)")
-        self.lbl_status.setStyleSheet("color: #3fb950; font-weight: 600;")
+        self.btn_play.setText("[ ► ] Leer en Voz Alta")
+        self.lbl_status.setText("[ ACTIVO ] Motor Piper TTS Local (DirectML)")
+        self.lbl_status.setStyleSheet("color: #22c55e; font-weight: 700; font-family: Consolas, monospace;")
 
     def on_play_error(self, err_msg: str):
         self.on_play_finished()
@@ -688,7 +689,7 @@ class QuickReaderTab(QWidget):
             QMessageBox.information(
                 self,
                 "Audio Guardado",
-                f"✅ Archivo MP3 guardado exitosamente:\n\n{filepath_mp3}\n\n"
+                f"Archivo MP3 guardado exitosamente:\n\n{filepath_mp3}\n\n"
                 f"Duración: {dur_fmt} | Tamaño: {tamano_mb}\n"
                 f"Firma: {firma_str}"
             )
@@ -737,7 +738,7 @@ class QuickReaderTab(QWidget):
         QMessageBox.information(
             self,
             "Configuración Guardada",
-            "✅ La configuración se ha guardado correctamente.\n\n"
+            "La configuración se ha guardado correctamente.\n\n"
             f"Voz: {cfg['voice']}\n"
             f"Velocidad: {cfg['speed_factor']}x\n"
             f"Volumen: {cfg['volume']}%\n"

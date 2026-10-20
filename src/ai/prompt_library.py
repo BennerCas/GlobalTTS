@@ -11,6 +11,7 @@ import json
 import logging
 import re
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -435,6 +436,273 @@ class PromptLibrary:
     def get_active_prompt_id(self, mode_key: str) -> str:
         """Obtiene el ID del prompt activo para el modo dado."""
         return self.active_configuration.get(mode_key, f"builtin_{mode_key}")
+
+    # ==========================================
+    # Sincronización Bidireccional con Markdown
+    # ==========================================
+    def import_from_markdown(self, md_path: Path | str) -> int:
+        """Importa y actualiza modos y estilos narrativos desde el archivo PROMPTS_MAESTROS.md."""
+        md_file = Path(md_path)
+        if not md_file.exists():
+            raise FileNotFoundError(f"Archivo de prompts markdown no encontrado: {md_file}")
+
+        text = md_file.read_text(encoding="utf-8")
+        updated_count = 0
+
+        # 1. Parsear Modos de IA (Sección 3)
+        mode_matches = re.split(r"(?=### Modo \d+:)", text)
+        for block in mode_matches:
+            if not block.strip().startswith("### Modo"):
+                continue
+            id_m = re.search(r"-\s+\*\*ID:\*\*\s+`?([a-zA-Z0-9_]+)`?", block)
+            key_m = re.search(r"-\s+\*\*Modo Key:\*\*\s+`?([a-zA-Z0-9_]+)`?", block)
+            name_m = re.search(r"-\s+\*\*Nombre:\*\*\s+(.+)", block)
+            desc_m = re.search(r"-\s+\*\*Descripción:\*\*\s+(.+)", block)
+            temp_m = re.search(r"`temperature`:\s*([0-9.]+)", block)
+            topp_m = re.search(r"`top_p`:\s*([0-9.]+)", block)
+            ctx_m = re.search(r"`num_ctx`:\s*([0-9]+)", block)
+
+            blocks_code = re.findall(r"```(?:\w+)?\n([\s\S]*?)```", block)
+            user_tmpl = "{text}"
+            sys_prompt = ""
+            if len(blocks_code) >= 2:
+                user_tmpl = blocks_code[0].strip()
+                sys_prompt = blocks_code[1].strip()
+            elif len(blocks_code) == 1:
+                sys_prompt = blocks_code[0].strip()
+
+            if id_m:
+                m_id = id_m.group(1).strip()
+                m_key = key_m.group(1).strip() if key_m else m_id.replace("builtin_", "")
+                m_name = name_m.group(1).strip() if name_m else m_id
+                m_desc = desc_m.group(1).strip() if desc_m else ""
+
+                params = {"temperature": 0.4, "top_p": 0.9, "num_ctx": 8192}
+                if temp_m:
+                    params["temperature"] = float(temp_m.group(1))
+                if topp_m:
+                    params["top_p"] = float(topp_m.group(1))
+                if ctx_m:
+                    params["num_ctx"] = int(ctx_m.group(1))
+
+                if m_id in self.modes:
+                    item = self.modes[m_id]
+                    item.name = m_name
+                    item.description = m_desc
+                    item.parameters = params
+                    if sys_prompt:
+                        item.system_prompt = sys_prompt
+                    if user_tmpl:
+                        item.user_template = user_tmpl
+                else:
+                    self.modes[m_id] = PromptItem(
+                        id=m_id,
+                        category="mode",
+                        name=m_name,
+                        description=m_desc,
+                        system_prompt=sys_prompt,
+                        user_template=user_tmpl,
+                        mode_key=m_key,
+                        parameters=params,
+                        is_builtin=True,
+                    )
+                updated_count += 1
+
+        # 2. Parsear Estilos Narrativos (Sección 4)
+        style_matches = re.split(r"(?=### \d+\.\s+`[^`]+`)", text)
+        for block in style_matches:
+            header_m = re.match(r"### \d+\.\s+`([^`]+)`\s+\(([^)]+)\)", block.strip())
+            if not header_m:
+                continue
+            s_id = header_m.group(1).strip()
+            fallback_name = header_m.group(2).strip()
+
+            name_m = re.search(r"-\s+\*\*Nombre:\*\*\s+(.+)", block)
+            tone_m = re.search(r"-\s+\*\*Tono:\*\*\s+(.+)", block)
+            cad_m = re.search(r"-\s+\*\*Cadencia:\*\*\s+(.+)", block)
+            voc_m = re.search(r"-\s+\*\*Perfil de Vocabulario:\*\*\s+(.+)", block)
+            pros_m = re.search(r"-\s+\*\*Guía Prosódica:\*\*\s+(.+)", block)
+
+            addon_blocks = re.findall(r"```(?:\w+)?\n([\s\S]*?)```", block)
+            sys_addon = addon_blocks[0].strip() if addon_blocks else ""
+
+            s_name = name_m.group(1).strip() if name_m else fallback_name
+            s_tone = tone_m.group(1).strip() if tone_m else ""
+            s_cad = cad_m.group(1).strip() if cad_m else ""
+            s_voc = voc_m.group(1).strip() if voc_m else ""
+            s_pros = pros_m.group(1).strip() if pros_m else ""
+
+            if s_id in self.styles:
+                style_item = self.styles[s_id]
+                style_item.name = s_name
+                style_item.tone = s_tone
+                style_item.cadence = s_cad
+                style_item.vocabulary_profile = s_voc
+                style_item.prosody_guidance = s_pros
+                if sys_addon:
+                    style_item.system_prompt_addon = sys_addon
+            else:
+                self.styles[s_id] = NarrativeStyleDef(
+                    id=s_id,
+                    name=s_name,
+                    tone=s_tone,
+                    cadence=s_cad,
+                    vocabulary_profile=s_voc,
+                    prosody_guidance=s_pros,
+                    system_prompt_addon=sys_addon,
+                )
+            updated_count += 1
+
+        self.save()
+        logger.info("Sincronizados exitosamente %d prompts y estilos desde %s", updated_count, md_file.name)
+        return updated_count
+
+    def export_to_markdown(self, md_path: Path | str) -> None:
+        """Exporta el catálogo completo de prompts maestros y estilos a formato Markdown PROMPTS_MAESTROS.md."""
+        md_file = Path(md_path)
+        lines = [
+            "# GLOBAL TTS — CATÁLOGO MAESTRO DE PROMPTS Y DIRECTRICES DE INFERENCIA LOCAL",
+            "",
+            "> **DOCUMENTO MAESTRO VINCULANTE (SSOT - SINGLE SOURCE OF TRUTH)**  ",
+            "> **Firma Institucional:** `HUMAN AI SYNERGY BY BENNER CASTILLO - 2026®`  ",
+            "> **Motor de Inferencia Local:** Mistral NeMo 12B Instruct (`mistral-nemo-local:latest`) vía Ollama  ",
+            "> **Motor de Síntesis Vocal:** Piper VITS Local (Sherpa-ONNX 22.05 kHz / 16 kHz) con Normalización EBU R128 (-16 LUFS)  ",
+            "> **Context Window:** 8,192 tokens  ",
+            f"> **Última Actualización:** {datetime.now().strftime('%Y-%m-%d')}  ",
+            "",
+            "---",
+            "",
+            "## 1. Contexto de Arquitectura para Agentes e Ingenieros de Prompts",
+            "",
+            "Este documento define la configuración operativa, los *System Prompts*, los esquemas de *Meta-Prompting* y los parámetros de hiperajuste para el pipeline de inteligencia artificial local de **GlobalTTS**.",
+            "",
+            "Cualquier agente inteligente o desarrollador que consulte este documento debe comprender el pipeline técnico:",
+            "",
+            "```",
+            "[ Texto Original ] ",
+            "       │",
+            "       ▼",
+            "[ Preprocesamiento & Limpieza Fonética (text_clean.py) ]",
+            "       │",
+            "       ▼",
+            "[ Mistral NeMo 12B Local (Ollama - Context 8192) ]",
+            "       │  ├── Modo Enhance: Inyección de tags prosódicos sin cambiar texto",
+            "       │  ├── Modo Rewrite: Reescritura narrativa en 11 estilos CO-STAR",
+            "       │  ├── Modo Translate: Adaptación a español latino neutro (es-LA)",
+            "       │  └── Modo Dialogue: Auto-casting dramático narrador vs personajes",
+            "       │",
+            "       ▼",
+            "[ Intérprete Fonético & Segmentador de Cláusulas (markup/parser.py) ]",
+            "       │",
+            "       ▼",
+            "[ Motor de Síntesis Piper VITS (piper_engine.py / ONNX DirectML) ]",
+            "       │",
+            "       ▼",
+            "[ Normalización EBU R128 / Empaquetado MP3 256k & Video Karaoke MP4 ]",
+            "```",
+            "",
+            "### Reglas Críticas para la Modificación de Prompts por Agentes:",
+            "1. **Cero Texto Conversacional:** Los prompts deben obligar al modelo a entregar **únicamente** el texto transformado. Queda estrictamente prohibido que el modelo genere preámbulos, saludos, comentarios o despedidas (\"Aquí tienes tu texto:\", \"Espero que te guste:\", etc.).",
+            "2. **Preservación Estricta de Etiquetas:** Las etiquetas de rango (`[lento]...[/lento]`, `[susurro]...[/susurro]`) deben estar correctamente balanceadas. Las etiquetas de punto (`[pausa:1s]`, `[pausa:500ms]`) no llevan cierre.",
+            "3. **Fidelidad Semántica:** En el modo `enhance`, está prohibido añadir o eliminar palabras. En el modo `rewrite`, los hechos, cronología y nombres propios deben mantenerse invariables.",
+            "4. **Sincronización Bidireccional:** Cualquier edición realizada en este documento se sincroniza automáticamente con el archivo [`src/ai/prompts_master.json`](file:///c:/antigravityAS/GlobalTTS/src/ai/prompts_master.json) y se refleja en caliente en la interfaz de usuario de GlobalTTS.",
+            "",
+            "---",
+            "",
+            "## 2. Etiquetas Prosódicas y Fonéticas Soportadas por el Motor TTS",
+            "",
+            "| Etiqueta | Tipo | Función Sonora | Ejemplo de Uso |",
+            "| :--- | :--- | :--- | :--- |",
+            "| `[pausa:1s]` | Punto | Silencio dramático de 1.0 segundo | `La puerta se abrió lentamente. [pausa:1s] No había nadie.` |",
+            "| `[pausa:500ms]` | Punto | Respiración o inflexión de medio segundo | `Miró a su alrededor, [pausa:500ms] dudando si avanzar.` |",
+            "| `[pausa:300ms]` | Punto | Micropausa de cadencia rítmica | `Era verdad; [pausa:300ms] lo sabía muy bien.` |",
+            "| `[lento]...[/lento]` | Rango | Reduce la velocidad al 75% | `[lento]El tiempo parecía haberse detenido en la sala.[/lento]` |",
+            "| `[rapido]...[/rapido]` | Rango | Aumenta la velocidad al 130% | `[rapido]¡Corre, antes de que sea demasiado tarde![/rapido]` |",
+            "| `[susurro]...[/susurro]` | Rango | Modulación de baja amplitud e intimidad | `[susurro]No hagas ningún ruido, nos están buscando.[/susurro]` |",
+            "| `[enfasis]...[/enfasis]` | Rango | Realce de intensidad y claridad fonética | `Esa fue [enfasis]la única vez[/enfasis] que volvieron a verlo.` |",
+            "| `[misterioso]...[/misterioso]` | Rango | Atmósfera tensa, sombría y pausada | `[misterioso]Bajo las sombras del bosque, algo se movía.[/misterioso]` |",
+            "| `[alegre]...[/alegre]` | Rango | Tono brillante, ritmo ágil y ascendente | `[alegre]¡Por fin lo hemos conseguido todos juntos![/alegre]` |",
+            "| `[triste]...[/triste]` | Rango | Cadencia descendente y melancólica | `[triste]Ya nada volvió a ser como en aquellos días.[/triste]` |",
+            "| `[serio]...[/serio]` | Rango | Solemnidad, firmeza y peso institucional | `[serio]El dictamen final fue inapelable y contundente.[/serio]` |",
+            "| `[emocionado]...[/emocionado]` | Rango | Intensidad dramática y vibración vocal | `[emocionado]¡El descubrimiento cambiará el rumbo de la ciencia![/emocionado]` |",
+            "| `[enojado]...[/enojado]` | Rango | Golpe seco, ritmo tajante y firme | `[enojado]¡Basta de excusas inútiles, quiero resultados![/enojado]` |",
+            "",
+            "---",
+            "",
+            "## 3. Catálogo Maestro de Modos de IA",
+            ""
+        ]
+
+        mode_num = 1
+        for mode in self.list_modes():
+            lines.extend([
+                f"### Modo {mode_num}: `{mode.id}`",
+                f"- **ID:** `{mode.id}`",
+                f"- **Modo Key:** `{mode.mode_key or mode.id.replace('builtin_', '')}`",
+                f"- **Nombre:** {mode.name}",
+                f"- **Descripción:** {mode.description}",
+                "- **Parámetros:**",
+                f"  - `temperature`: {mode.parameters.get('temperature', 0.4):.2f}",
+                f"  - `top_p`: {mode.parameters.get('top_p', 0.9):.2f}",
+                f"  - `num_ctx`: {mode.parameters.get('num_ctx', 8192)}",
+                "- **Plantilla de Usuario:**",
+                "```",
+                mode.user_template,
+                "```",
+                "- **System Prompt:**",
+                "```",
+                mode.system_prompt,
+                "```",
+                "",
+                "---",
+                ""
+            ])
+            mode_num += 1
+
+        lines.extend([
+            "## 4. Catálogo de los 11 Estilos Narrativos Industriales",
+            ""
+        ])
+
+        style_num = 1
+        for style in self.list_styles():
+            lines.extend([
+                f"### {style_num}. `{style.id}` ({style.name})",
+                f"- **Nombre:** {style.name}",
+                f"- **Tono:** {style.tone}",
+                f"- **Cadencia:** {style.cadence}",
+                f"- **Perfil de Vocabulario:** {style.vocabulary_profile}",
+                f"- **Guía Prosódica:** {style.prosody_guidance}",
+                "- **Addon del System Prompt:**",
+                "```",
+                style.system_prompt_addon,
+                "```",
+                "",
+                "---",
+                ""
+            ])
+            style_num += 1
+
+        lines.extend([
+            "## 5. Protocolo de Sincronización Automática",
+            "",
+            "El motor `PromptLibrary` ([`src/ai/prompt_library.py`](file:///c:/antigravityAS/GlobalTTS/src/ai/prompt_library.py)) dispone de sincronización bidireccional entre este documento y el sistema:",
+            "",
+            "1. **Desde este documento a la aplicación:**",
+            "   Al editar cualquiera de las secciones de este archivo, la aplicación GlobalTTS permite sincronizar los cambios de inmediato presionando el botón `[ Sincronizar desde PROMPTS_MAESTROS.md ]` dentro de la pestaña `PROMPTS MAESTROS & ESTILOS`, o ejecutando:",
+            "   ```powershell",
+            "   python -c \"from src.ai.prompt_library import PromptLibrary; PromptLibrary().import_from_markdown('PROMPTS_MAESTROS.md')\"",
+            "   ```",
+            "2. **Desde la aplicación a este documento:**",
+            "   Cualquier nuevo prompt o modificación realizada a través de la interfaz gráfica puede exportarse de vuelta para actualizar este documento mediante:",
+            "   ```powershell",
+            "   python -c \"from src.ai.prompt_library import PromptLibrary; PromptLibrary().export_to_markdown('PROMPTS_MAESTROS.md')\"",
+            "   ```",
+            ""
+        ])
+
+        md_file.write_text("\n".join(lines), encoding="utf-8")
+        logger.info("Exportado exitosamente catálogo maestro a %s", md_file.name)
 
     # ==========================================
     # Motor de Meta-Prompting y Renderizado

@@ -139,9 +139,19 @@ class MainWindow(QDialog):
     def __init__(self, initial_file: Optional[str] = None, tray_icon: Optional[QSystemTrayIcon] = None, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.tray_icon = tray_icon
+        self.setWindowFlags(
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowMinMaxButtonsHint
+            | Qt.WindowType.WindowCloseButtonHint
+        )
         self.setWindowTitle("GlobalTTS — Sistema Integral de Audiolibros, Video Karaoke & Lectura en Vivo")
-        self.resize(1050, 750)
-        self.setMinimumSize(920, 680)
+        
+        # Modo Kiosko 16:9 ajustado a la pantalla disponible (preservando barra de tareas de Windows)
+        screen = QApplication.primaryScreen()
+        if screen:
+            avail = screen.availableGeometry()
+            self.setGeometry(avail)
+        self.setMinimumSize(1024, 680)
         self.setStyleSheet(DARK_THEME_QSS)
 
         self.batch_files: list[dict] = []
@@ -181,7 +191,7 @@ class MainWindow(QDialog):
 
         top_bar.addStretch()
 
-        self.btn_minimize = QPushButton("🔽 Minimizar a Bandeja")
+        self.btn_minimize = QPushButton("[ _ ] Minimizar a Bandeja")
         self.btn_minimize.setObjectName("actionButton")
         self.btn_minimize.setToolTip("Oculta la ventana en la barra de herramientas del sistema")
         self.btn_minimize.clicked.connect(self.minimize_to_tray)
@@ -191,41 +201,24 @@ class MainWindow(QDialog):
 
         # Tab Widget Principal
         self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("""
-            QTabBar::tab {
-                background: #161b22;
-                color: #8b949e;
-                padding: 10px 22px;
-                font-weight: 600;
-                font-size: 13px;
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
-                margin-right: 4px;
-            }
-            QTabBar::tab:selected {
-                background: #0d1117;
-                color: #58a6ff;
-                border-bottom: 2px solid #58a6ff;
-            }
-        """)
 
         # Pestaña 1: Lectura Rápida & Suite de Configuración Profesional
         self.tab_quick = QuickReaderTab()
-        self.tabs.addTab(self.tab_quick, "⚡ Lectura Rápida & Configuración")
+        self.tabs.addTab(self.tab_quick, "LECTURA RÁPIDA & CONFIGURACIÓN")
 
         # Pestaña 2: Generador de Audiolibros & Lotes
         self.tab_generator = QWidget()
         self.init_generator_tab()
-        self.tabs.addTab(self.tab_generator, "🎙️ Generador de Audiolibros")
+        self.tabs.addTab(self.tab_generator, "GENERADOR DE AUDIOLIBROS")
 
         # Pestaña 3: Biblioteca & Reproductor
         self.tab_library = LibraryTab()
-        self.tabs.addTab(self.tab_library, "📚 Biblioteca & Reproductor")
+        self.tabs.addTab(self.tab_library, "BIBLIOTECA & REPRODUCTOR")
 
-        # Pestaña 4: Gestor de Prompts Maestros & Estilos IA (Requisito 3)
+        # Pestaña 4: Gestor de Prompts Maestros & Estilos IA
         self.tab_prompts = PromptManagerWidget(library=self.prompt_library)
         self.tab_prompts.prompts_updated.connect(self.refresh_styles_combo)
-        self.tabs.addTab(self.tab_prompts, "🧠 Prompts Maestros & Estilos IA")
+        self.tabs.addTab(self.tab_prompts, "PROMPTS MAESTROS & ESTILOS IA")
 
         main_layout.addWidget(self.tabs)
 
@@ -289,23 +282,23 @@ class MainWindow(QDialog):
         left_col.setSpacing(8)
 
         # 1. Tabla de Archivos en Lote
-        batch_group = QGroupBox("📁 Archivos a Procesar (Procesamiento en Lote 1 por 1)")
+        batch_group = QGroupBox("Archivos a Procesar (Procesamiento en Lote 1 por 1)")
         batch_lay = QVBoxLayout(batch_group)
         batch_lay.setContentsMargins(10, 10, 10, 10)
         batch_lay.setSpacing(6)
 
         btn_row = QHBoxLayout()
-        add_files_btn = QPushButton("➕ Agregar Archivos...")
+        add_files_btn = QPushButton("[ + ] Agregar Archivos...")
         add_files_btn.setObjectName("actionButton")
         add_files_btn.clicked.connect(self.select_files)
         btn_row.addWidget(add_files_btn)
 
-        remove_btn = QPushButton("➖ Quitar Selección")
+        remove_btn = QPushButton("[ − ] Quitar Selección")
         remove_btn.setObjectName("secondaryActionButton")
         remove_btn.clicked.connect(self.remove_selected_file)
         btn_row.addWidget(remove_btn)
 
-        clear_btn = QPushButton("🗑️ Limpiar Todo")
+        clear_btn = QPushButton("[ × ] Limpiar Todo")
         clear_btn.setObjectName("secondaryActionButton")
         clear_btn.clicked.connect(self.clear_batch)
         btn_row.addWidget(clear_btn)
@@ -323,7 +316,7 @@ class MainWindow(QDialog):
         left_col.addWidget(batch_group)
 
         # 2. Portada y Cuñas Intersticiales (Radio / Separadores)
-        extra_group = QGroupBox("🎨 Portada y Cuñas Intersticiales")
+        extra_group = QGroupBox("Portada y Cuñas Intersticiales")
         extra_lay = QFormLayout(extra_group)
         extra_lay.setContentsMargins(10, 10, 10, 10)
         extra_lay.setSpacing(6)
@@ -352,7 +345,7 @@ class MainWindow(QDialog):
         for k, v in self.voices_dict.items():
             self.interstitial_voice.addItem(v.name, k)
 
-        self.btn_preview_interstitial = QPushButton("▶️ Previa")
+        self.btn_preview_interstitial = QPushButton("[ ► ] Previa")
         self.btn_preview_interstitial.setObjectName("actionButton")
         self.btn_preview_interstitial.clicked.connect(self.preview_interstitial)
 
@@ -377,7 +370,7 @@ class MainWindow(QDialog):
         right_col.setSpacing(8)
 
         # 3. Configuración de Voz y Auto-Casting
-        voice_group = QGroupBox("🎭 Voces y Auto-Casting Multi-Voz")
+        voice_group = QGroupBox("Voces y Auto-Casting Multi-Voz")
         voice_lay = QFormLayout(voice_group)
         voice_lay.setContentsMargins(10, 10, 10, 10)
         voice_lay.setSpacing(6)
@@ -407,7 +400,7 @@ class MainWindow(QDialog):
         right_col.addWidget(voice_group)
 
         # 4. Modo Narración / Análisis con Mistral NeMo Local
-        ai_group = QGroupBox("🧠 Expresividad y Modo Narración (Mistral NeMo Local)")
+        ai_group = QGroupBox("Expresividad y Modo Narración (Mistral NeMo Local)")
         ai_lay = QVBoxLayout(ai_group)
         ai_lay.setContentsMargins(10, 10, 10, 10)
         ai_lay.setSpacing(6)
@@ -453,7 +446,7 @@ class MainWindow(QDialog):
         ai_opt_lay.addRow("Parámetros:", row_params)
 
         btn_row_p = QHBoxLayout()
-        self.btn_manage_prompts = QPushButton("⚙️ Ver y Editar en Pestaña de Prompts Maestros")
+        self.btn_manage_prompts = QPushButton("[ ↗ ] Ver y Editar en Prompts Maestros")
         self.btn_manage_prompts.setObjectName("secondaryActionButton")
         self.btn_manage_prompts.clicked.connect(lambda: self.tabs.setCurrentIndex(3))
         btn_row_p.addWidget(self.btn_manage_prompts)
@@ -464,7 +457,7 @@ class MainWindow(QDialog):
         right_col.addWidget(ai_group)
 
         # 5. Formatos de Salida
-        out_group = QGroupBox("📦 Formatos a Generar")
+        out_group = QGroupBox("Formatos a Generar")
         out_lay = QHBoxLayout(out_group)
         out_lay.setContentsMargins(10, 8, 10, 8)
         self.chk_mp3 = QCheckBox("Audio MP3 (256k EBU R128)")
@@ -549,19 +542,19 @@ class MainWindow(QDialog):
         res_lay.addWidget(self.res_summary)
 
         res_btns = QHBoxLayout()
-        self.btn_open_last_folder = QPushButton("📂 Abrir Carpeta del Libro")
+        self.btn_open_last_folder = QPushButton("[ ↗ ] Abrir Carpeta del Libro")
         self.btn_open_last_folder.setObjectName("secondaryActionButton")
         self.btn_open_last_folder.clicked.connect(self.open_last_book_folder)
 
-        self.btn_go_library = QPushButton("📚 Ver en Biblioteca")
+        self.btn_go_library = QPushButton("[ ↗ ] Ver en Biblioteca")
         self.btn_go_library.setObjectName("actionButton")
         self.btn_go_library.clicked.connect(lambda: self.tabs.setCurrentIndex(2))
 
-        self.btn_upload_yt = QPushButton("🎥 Subir a YouTube")
+        self.btn_upload_yt = QPushButton("[ ↗ ] Publicar en YouTube")
         self.btn_upload_yt.setObjectName("secondaryActionButton")
         self.btn_upload_yt.clicked.connect(lambda: self.show_distribution_dialog("YouTube"))
 
-        self.btn_upload_sp = QPushButton("🎧 Subir a Spotify / Podcasts")
+        self.btn_upload_sp = QPushButton("[ ↗ ] Publicar en Spotify")
         self.btn_upload_sp.setObjectName("secondaryActionButton")
         self.btn_upload_sp.clicked.connect(lambda: self.show_distribution_dialog("Spotify"))
 
@@ -573,7 +566,7 @@ class MainWindow(QDialog):
         gen_layout.addWidget(self.res_card)
 
         # Botón de Inicio
-        self.start_btn = QPushButton("🚀 Iniciar Generación (En Lote)")
+        self.start_btn = QPushButton("[ ► ] Iniciar Generación en Lote")
         self.start_btn.setObjectName("primaryButton")
         self.start_btn.clicked.connect(self.start_batch_processing)
         gen_layout.addWidget(self.start_btn)
@@ -749,16 +742,16 @@ class MainWindow(QDialog):
         self.last_results = results
         self.progress_bar.setValue(100)
         self.start_btn.setEnabled(True)
-        self.start_btn.setText("🚀 Procesar de Nuevo")
+        self.start_btn.setText("[ ⟳ ] Procesar de Nuevo")
 
         elapsed = time.perf_counter() - self.start_timestamp if self.start_timestamp else 0
         self.val_elapsed.setText(str(timedelta(seconds=int(elapsed))))
         self.val_eta.setText("00:00:00")
-        self.lbl_stage.setText("¡Lote completado con éxito!")
+        self.lbl_stage.setText("Lote completado con éxito.")
         self.lbl_active_utt.setText(f"Procesados {len(results)} libro(s) en {elapsed:.1f}s.")
 
         self.res_card.setVisible(True)
-        self.res_summary.setText(f"✅ Se han generado {len(results)} audiolibro(s) en sus carpetas dedicadas.")
+        self.res_summary.setText(f"Se han generado {len(results)} audiolibro(s) en sus carpetas dedicadas.")
 
         # Refrescar la pestaña de biblioteca automáticamente
         self.tab_library.refresh_library()
@@ -775,7 +768,7 @@ class MainWindow(QDialog):
     def on_error(self, err_msg: str):
         self.timer.stop()
         self.start_btn.setEnabled(True)
-        self.start_btn.setText("🚀 Iniciar Generación (En Lote)")
+        self.start_btn.setText("[ ► ] Iniciar Generación en Lote")
         self.lbl_stage.setText("Error en el lote.")
         self.lbl_active_utt.setText(err_msg)
         QMessageBox.critical(self, "Error en el Lote", f"Ocurrió un error:\n\n{err_msg}")
@@ -796,7 +789,7 @@ class GlobalTTSTrayIcon(QSystemTrayIcon):
         menu = QMenu()
         menu.setStyleSheet(DARK_THEME_QSS)
 
-        open_app_action = QAction("🎙️ Abrir GlobalTTS (Ventana Principal)", menu)
+        open_app_action = QAction("GlobalTTS (Ventana Principal)", menu)
         f = open_app_action.font()
         f.setBold(True)
         open_app_action.setFont(f)
@@ -805,35 +798,35 @@ class GlobalTTSTrayIcon(QSystemTrayIcon):
 
         menu.addSeparator()
 
-        quick_action = QAction("⚡ Lector Rápido & Configuración", menu)
+        quick_action = QAction("Lector Rápido & Configuración", menu)
         quick_action.triggered.connect(self.show_quick_reader)
         menu.addAction(quick_action)
 
-        gen_action = QAction("🎙️ Generador de Audiolibros & Lotes", menu)
+        gen_action = QAction("Generador de Audiolibros & Lotes", menu)
         gen_action.triggered.connect(self.show_generator)
         menu.addAction(gen_action)
 
-        open_bib_action = QAction("📚 Biblioteca & Reproductor", menu)
+        open_bib_action = QAction("Biblioteca & Reproductor", menu)
         open_bib_action.triggered.connect(self.show_library_tab)
         menu.addAction(open_bib_action)
 
-        prompts_action = QAction("🧠 Prompts Maestros & Estilos IA", menu)
+        prompts_action = QAction("Prompts Maestros & Estilos IA", menu)
         prompts_action.triggered.connect(self.show_prompts_tab)
         menu.addAction(prompts_action)
 
         menu.addSeparator()
 
-        minimize_action = QAction("🔽 Minimizar a Bandeja", menu)
+        minimize_action = QAction("Minimizar a Bandeja", menu)
         minimize_action.triggered.connect(self.minimize_main_window)
         menu.addAction(minimize_action)
 
-        load_action = QAction("📄 Cargar archivo(s) para audiolibro...", menu)
+        load_action = QAction("Cargar Archivo(s) para Audiolibro...", menu)
         load_action.triggered.connect(self.open_file_dialog)
         menu.addAction(load_action)
 
         menu.addSeparator()
 
-        exit_action = QAction("❌ Salir de GlobalTTS", menu)
+        exit_action = QAction("Salir de GlobalTTS", menu)
         exit_action.triggered.connect(QApplication.instance().quit)
         menu.addAction(exit_action)
 
@@ -851,8 +844,7 @@ class GlobalTTSTrayIcon(QSystemTrayIcon):
             self.main_window.add_file_to_batch(initial_file)
             self.main_window.tabs.setCurrentIndex(1)
 
-        self.main_window.show()
-        self.main_window.setWindowState(self.main_window.windowState() & ~Qt.WindowState.WindowMinimized | Qt.WindowState.WindowActive)
+        self.main_window.showMaximized()
         self.main_window.raise_()
         self.main_window.activateWindow()
 
