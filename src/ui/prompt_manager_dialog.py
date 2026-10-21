@@ -134,7 +134,7 @@ class PromptManagerWidget(QWidget):
         self.spin_ctx = QSpinBox()
         self.spin_ctx.setRange(2048, 32768)
         self.spin_ctx.setSingleStep(1024)
-        self.spin_ctx.setValue(8192)
+        self.spin_ctx.setValue(4096)
 
         params_row.addWidget(QLabel("Temperature:"))
         params_row.addWidget(self.spin_temp)
@@ -228,7 +228,7 @@ class PromptManagerWidget(QWidget):
             params = prompt.parameters or {}
             self.spin_temp.setValue(float(params.get("temperature", 0.4)))
             self.spin_topp.setValue(float(params.get("top_p", 0.9)))
-            self.spin_ctx.setValue(int(params.get("num_ctx", 8192)))
+            self.spin_ctx.setValue(int(params.get("num_ctx", 4096)))
 
             self.btn_delete.setEnabled(cat == "custom")
             self.edit_template.setEnabled(True)
@@ -249,7 +249,7 @@ class PromptManagerWidget(QWidget):
 
             self.spin_temp.setValue(0.4)
             self.spin_topp.setValue(0.9)
-            self.spin_ctx.setValue(8192)
+            self.spin_ctx.setValue(4096)
             self.spin_temp.setEnabled(False)
             self.spin_topp.setEnabled(False)
             self.spin_ctx.setEnabled(False)
@@ -324,7 +324,7 @@ class PromptManagerWidget(QWidget):
                     description=f"Basado en estilo {style.name}",
                     system_prompt=self.edit_system.toPlainText(),
                     user_template="{text}",
-                    parameters={"temperature": 0.45, "top_p": 0.9, "num_ctx": 8192},
+                    parameters={"temperature": 0.45, "top_p": 0.9, "num_ctx": 4096},
                     is_builtin=False,
                 )
                 self.library.add_prompt(item)

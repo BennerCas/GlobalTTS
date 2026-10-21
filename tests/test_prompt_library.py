@@ -79,7 +79,7 @@ def test_prompt_library_crud_operations(temp_library: PromptLibrary):
         description="Terror en estaciones espaciales abandonadas",
         system_prompt="Eres un narrador de horror cósmico en el espacio profundo.",
         user_template="Texto: {text}",
-        parameters={"temperature": 0.5, "top_p": 0.95, "num_ctx": 8192},
+        parameters={"temperature": 0.5, "top_p": 0.95, "num_ctx": 4096},
     )
     temp_library.add_prompt(custom_item)
     assert temp_library.get_prompt("custom_scifi_horror") is not None
@@ -167,7 +167,7 @@ def test_build_prompt_for_mode_with_costar(temp_library: PromptLibrary):
     assert "Tiempo presente" in sys_prompt
     assert "Cyberpunk" in sys_prompt
     assert "La tripulación detectó una anomalía" in user_prompt
-    assert params.get("num_ctx") == 8192
+    assert params.get("num_ctx") == 4096
 
 
 def test_nemo_enhancer_methods_with_mock():

@@ -112,13 +112,14 @@ class TtsPlayWorker(QThread):
 
 
 class AiEnhanceWorker(QThread):
-    finished = pyqtSignal(str)
+    finished = pyqtSignal(str, bool)
     error = pyqtSignal(str)
 
-    def __init__(self, text: str, config: NarrationConfig):
+    def __init__(self, text: str, config: NarrationConfig, auto_play: bool = False):
         super().__init__()
         self.text = text
         self.config = config
+        self.auto_play = auto_play
 
     def run(self):
         try:
@@ -139,7 +140,7 @@ class AiEnhanceWorker(QThread):
                 result_text = " ".join(seg_texts) if seg_texts else self.text
             else:
                 result_text = res
-            self.finished.emit(result_text)
+            self.finished.emit(result_text, self.auto_play)
         except Exception as e:
             self.error.emit(str(e))
 
@@ -461,6 +462,10 @@ class QuickReaderTab(QWidget):
 
     def toggle_ai_panel(self, checked: bool):
         self.ai_controls_frame.setEnabled(checked)
+        if checked:
+            self.btn_play.setText("[ ► ] Narrar y Escuchar con IA")
+        else:
+            self.btn_play.setText("[ ► ] Leer en Voz Alta")
 
     def populate_voices(self):
         self.voice_combo.clear()
@@ -506,7 +511,7 @@ class QuickReaderTab(QWidget):
         if text:
             self.text_edit.setText(text)
 
-    def apply_ai_enhancement(self):
+    def apply_ai_enhancement(self, auto_play: bool = False):
         text = self.text_edit.toPlainText().strip()
         if not text:
             QMessageBox.information(self, "Texto Vacío", "Por favor pega o escribe texto antes de aplicar IA.")
@@ -521,28 +526,39 @@ class QuickReaderTab(QWidget):
         )
 
         self.btn_apply_ai.setEnabled(False)
-        self.btn_apply_ai.setText("✨ Analizando con Mistral NeMo...")
-        self.lbl_status.setText("● Procesando con IA (Mistral NeMo 12B local)...")
-        self.lbl_status.setStyleSheet("color: #a371f7; font-weight: 600;")
+        self.btn_apply_ai.setText("[ ⟳ ] Analizando con Mistral NeMo...")
+        self.btn_play.setEnabled(False)
+        self.btn_play.setText("[ ⟳ ] Procesando con IA...")
+        self.lbl_status.setText("[ PROCESANDO ] Generando narración y prosodia con Mistral NeMo 12B local...")
+        self.lbl_status.setStyleSheet("color: #a371f7; font-weight: 700; font-family: Consolas, monospace;")
 
-        self.ai_worker = AiEnhanceWorker(text, cfg)
+        self.ai_worker = AiEnhanceWorker(text, cfg, auto_play=auto_play)
         self.ai_worker.finished.connect(self.on_ai_finished)
         self.ai_worker.error.connect(self.on_ai_error)
         self.ai_worker.start()
 
-    def on_ai_finished(self, enhanced_text: str):
+    def on_ai_finished(self, enhanced_text: str, auto_play: bool = False):
         self.text_edit.setPlainText(enhanced_text)
         self.btn_apply_ai.setEnabled(True)
-        self.btn_apply_ai.setText("✨ Aplicar Expresividad / Narrar al Texto")
-        self.lbl_status.setText("● Texto enriquecido exitosamente con IA")
-        self.lbl_status.setStyleSheet("color: #3fb950; font-weight: 600;")
+        self.btn_apply_ai.setText("[ ► ] Aplicar Expresividad / Narrar")
+        self.btn_play.setEnabled(True)
+        btn_label = "[ ► ] Narrar y Escuchar con IA" if self.chk_ai_enabled.isChecked() else "[ ► ] Leer en Voz Alta"
+        self.btn_play.setText(btn_label)
+        self.lbl_status.setText("[ COMPLETADO ] Texto enriquecido y preparado con etiquetas de voz")
+        self.lbl_status.setStyleSheet("color: #22c55e; font-weight: 700; font-family: Consolas, monospace;")
+
+        if auto_play:
+            self._start_audio_playback(enhanced_text)
 
     def on_ai_error(self, err_msg: str):
         self.btn_apply_ai.setEnabled(True)
-        self.btn_apply_ai.setText("✨ Aplicar Expresividad / Narrar al Texto")
-        self.lbl_status.setText("● Error en análisis de IA")
-        self.lbl_status.setStyleSheet("color: #f85149; font-weight: 600;")
-        QMessageBox.warning(self, "Aviso de IA", f"No se pudo completar el análisis con IA:\n{err_msg}")
+        self.btn_apply_ai.setText("[ ► ] Aplicar Expresividad / Narrar")
+        self.btn_play.setEnabled(True)
+        btn_label = "[ ► ] Narrar y Escuchar con IA" if self.chk_ai_enabled.isChecked() else "[ ► ] Leer en Voz Alta"
+        self.btn_play.setText(btn_label)
+        self.lbl_status.setText("[ ERROR ] Fallo en análisis de IA local")
+        self.lbl_status.setStyleSheet("color: #f85149; font-weight: 700; font-family: Consolas, monospace;")
+        QMessageBox.warning(self, "Aviso de IA", f"No se pudo completar el análisis con IA local:\n{err_msg}")
 
     def play_text(self):
         text = self.text_edit.toPlainText().strip()
@@ -550,6 +566,14 @@ class QuickReaderTab(QWidget):
             QMessageBox.information(self, "Texto Vacío", "Por favor escribe o pega texto para escuchar.")
             return
 
+        # Si el modo de IA está habilitado y el texto aún no tiene etiquetas prosódicas / narrativas inyectadas:
+        if self.chk_ai_enabled.isChecked() and not ("[" in text and "]" in text):
+            self.apply_ai_enhancement(auto_play=True)
+            return
+
+        self._start_audio_playback(text)
+
+    def _start_audio_playback(self, text: str):
         self.stop_text()
 
         voice_key = self.voice_combo.currentData() or "es_MX-claude-high"
@@ -558,7 +582,7 @@ class QuickReaderTab(QWidget):
 
         self.btn_play.setEnabled(False)
         self.btn_play.setText("[ ► ] Reproduciendo...")
-        self.lbl_status.setText("[ EN REPRODUCCIÓN ] Audio en curso...")
+        self.lbl_status.setText("[ EN REPRODUCCIÓN ] Audio expresivo en curso...")
         self.lbl_status.setStyleSheet("color: #38bdf8; font-weight: 700; font-family: Consolas, monospace;")
 
         self.play_worker = TtsPlayWorker(text=text, voice_key=voice_key, speed=speed, volume=volume)
@@ -586,7 +610,8 @@ class QuickReaderTab(QWidget):
 
     def on_play_finished(self):
         self.btn_play.setEnabled(True)
-        self.btn_play.setText("[ ► ] Leer en Voz Alta")
+        btn_label = "[ ► ] Narrar y Escuchar con IA" if self.chk_ai_enabled.isChecked() else "[ ► ] Leer en Voz Alta"
+        self.btn_play.setText(btn_label)
         self.lbl_status.setText("[ ACTIVO ] Motor Piper TTS Local (DirectML)")
         self.lbl_status.setStyleSheet("color: #22c55e; font-weight: 700; font-family: Consolas, monospace;")
 

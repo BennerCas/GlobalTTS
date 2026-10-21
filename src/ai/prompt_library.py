@@ -43,7 +43,7 @@ class PromptItem:
     system_prompt: str
     user_template: str = "{text}"
     mode_key: Optional[str] = None  # ej. "enhance", "rewrite", "translate", "dialogue_analysis"
-    parameters: Dict[str, Any] = field(default_factory=lambda: {"temperature": 0.4, "top_p": 0.9, "num_ctx": 8192})
+    parameters: Dict[str, Any] = field(default_factory=lambda: {"temperature": 0.4, "top_p": 0.9, "num_ctx": 4096})
     is_builtin: bool = False
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -60,7 +60,7 @@ class PromptItem:
             system_prompt=data.get("system_prompt", ""),
             user_template=data.get("user_template", "{text}"),
             mode_key=data.get("mode_key"),
-            parameters=data.get("parameters", {"temperature": 0.4, "top_p": 0.9, "num_ctx": 8192}),
+            parameters=data.get("parameters", {"temperature": 0.4, "top_p": 0.9, "num_ctx": 4096}),
             is_builtin=data.get("is_builtin", False),
             metadata=data.get("metadata", {}),
         )
@@ -186,7 +186,7 @@ class PromptLibrary:
         self.version = "1.0.0"
         self.metadata = {
             "engine": "Mistral NeMo 12B Instruct (Local Ollama)",
-            "context_window": 8192,
+            "context_window": 4096,
             "framework": "Meta-Prompting CO-STAR & Voice Tag Ingestion",
             "description": "Catálogo Maestro de Prompts y Estilos Narrativos para GlobalTTS"
         }
@@ -477,7 +477,7 @@ class PromptLibrary:
                 m_name = name_m.group(1).strip() if name_m else m_id
                 m_desc = desc_m.group(1).strip() if desc_m else ""
 
-                params = {"temperature": 0.4, "top_p": 0.9, "num_ctx": 8192}
+                params = {"temperature": 0.4, "top_p": 0.9, "num_ctx": 4096}
                 if temp_m:
                     params["temperature"] = float(temp_m.group(1))
                 if topp_m:
@@ -585,7 +585,7 @@ class PromptLibrary:
             "[ Preprocesamiento & Limpieza Fonética (text_clean.py) ]",
             "       │",
             "       ▼",
-            "[ Mistral NeMo 12B Local (Ollama - Context 8192) ]",
+            "[ Mistral NeMo 12B Local (Ollama - Context 4096) ]",
             "       │  ├── Modo Enhance: Inyección de tags prosódicos sin cambiar texto",
             "       │  ├── Modo Rewrite: Reescritura narrativa en 11 estilos CO-STAR",
             "       │  ├── Modo Translate: Adaptación a español latino neutro (es-LA)",
@@ -644,7 +644,7 @@ class PromptLibrary:
                 "- **Parámetros:**",
                 f"  - `temperature`: {mode.parameters.get('temperature', 0.4):.2f}",
                 f"  - `top_p`: {mode.parameters.get('top_p', 0.9):.2f}",
-                f"  - `num_ctx`: {mode.parameters.get('num_ctx', 8192)}",
+                f"  - `num_ctx`: {mode.parameters.get('num_ctx', 4096)}",
                 "- **Plantilla de Usuario:**",
                 "```",
                 mode.user_template,

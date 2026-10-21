@@ -2,7 +2,7 @@
   "version": "1.0.0",
   "metadata": {
     "engine": "Mistral NeMo 12B Instruct (Local Ollama)",
-    "context_window": 8192,
+    "context_window": 4096,
     "framework": "Meta-Prompting CO-STAR & Voice Tag Ingestion",
     "description": "Catálogo Maestro de Prompts y Estilos Narrativos para GlobalTTS"
   },
@@ -24,7 +24,7 @@
       "parameters": {
         "temperature": 0.35,
         "top_p": 0.9,
-        "num_ctx": 8192
+        "num_ctx": 4096
       },
       "is_builtin": true,
       "metadata": {
@@ -56,7 +56,7 @@
       "parameters": {
         "temperature": 0.45,
         "top_p": 0.9,
-        "num_ctx": 8192
+        "num_ctx": 4096
       },
       "is_builtin": true,
       "metadata": {}
@@ -72,7 +72,7 @@
       "parameters": {
         "temperature": 0.3,
         "top_p": 0.9,
-        "num_ctx": 8192
+        "num_ctx": 4096
       },
       "is_builtin": true,
       "metadata": {
@@ -90,7 +90,7 @@
       "parameters": {
         "temperature": 0.2,
         "top_p": 0.9,
-        "num_ctx": 8192
+        "num_ctx": 4096
       },
       "is_builtin": true,
       "metadata": {}

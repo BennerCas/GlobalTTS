@@ -70,14 +70,18 @@ class MistralNeMoEnhancer:
 
     @staticmethod
     def _clean_response(raw: str) -> str:
-        """Limpia etiquetas de pensamiento interno <thinking>, bloques markdown y espacios residuales."""
+        """Limpia etiquetas de pensamiento interno <thinking>, bloques markdown, preámbulos y acotaciones espurias."""
         if not raw:
             return ""
         # 1. Eliminar etiquetas de razonamiento interno <thinking>...</thinking>
         cleaned = re.sub(r"<thinking>.*?</thinking>", "", raw, flags=re.DOTALL).strip()
         # 2. Eliminar cercas de markdown (```markdown, ```json, ```text o ```)
         cleaned = re.sub(r"^```(?:markdown|text|json)?\n?", "", cleaned, flags=re.IGNORECASE)
-        cleaned = re.sub(r"\n?```$", "", cleaned)
+        cleaned = re.sub(r"\n?```$", "", cleaned).strip()
+        # 3. Eliminar preámbulos conversacionales típicos del LLM ("Aquí tienes...", "Versión narrada:", etc.)
+        cleaned = re.sub(r"^(?:Aquí tienes|A continuación|Versión narrada|Texto narrado)[^:\n]*:\s*\n*", "", cleaned, flags=re.IGNORECASE)
+        # 4. Eliminar acotaciones teatrales residuales en corchetes que no sean etiquetas de síntesis válidas
+        cleaned = re.sub(r"^\s*\[(?:Yo|Narrador|Personaje|Voz|Actor)[^\]]*\]:?\s*", "", cleaned, flags=re.IGNORECASE)
         return cleaned.strip()
 
     def _call_ollama(
@@ -86,9 +90,9 @@ class MistralNeMoEnhancer:
         system_prompt: str,
         temperature: float = 0.4,
         top_p: float = 0.9,
-        num_ctx: int = 8192,
+        num_ctx: int = 4096,
     ) -> str:
-        """Envía la solicitud de inferencia al servidor Ollama local con context window de 8192."""
+        """Envía la solicitud de inferencia al servidor Ollama local con context window de 4096 (optimizado para Vulkan iGPU)."""
         payload = {
             "model": self.model_name,
             "system": system_prompt,
@@ -127,7 +131,7 @@ class MistralNeMoEnhancer:
                 system_prompt=sys_prompt,
                 temperature=params.get("temperature", 0.35),
                 top_p=params.get("top_p", 0.9),
-                num_ctx=params.get("num_ctx", 8192),
+                num_ctx=params.get("num_ctx", 4096),
             )
             return enhanced if enhanced else text
         except Exception as e:
@@ -158,7 +162,7 @@ class MistralNeMoEnhancer:
 
         temp = config.temperature if config.temperature is not None else params.get("temperature", 0.45)
         top_p = config.top_p if config.top_p is not None else params.get("top_p", 0.9)
-        num_ctx = config.num_ctx if config.num_ctx is not None else params.get("num_ctx", 8192)
+        num_ctx = config.num_ctx if config.num_ctx is not None else params.get("num_ctx", 4096)
 
         try:
             rewritten = self._call_ollama(
@@ -198,7 +202,7 @@ class MistralNeMoEnhancer:
                 system_prompt=sys_prompt,
                 temperature=params.get("temperature", 0.3),
                 top_p=params.get("top_p", 0.9),
-                num_ctx=params.get("num_ctx", 8192),
+                num_ctx=params.get("num_ctx", 4096),
             )
             return translated if translated else text
         except Exception as e:
@@ -235,7 +239,7 @@ class MistralNeMoEnhancer:
                 system_prompt=sys_prompt,
                 temperature=params.get("temperature", 0.2),
                 top_p=params.get("top_p", 0.9),
-                num_ctx=params.get("num_ctx", 8192),
+                num_ctx=params.get("num_ctx", 4096),
             )
             # Intentar parsear como JSON
             data = json.loads(raw_output)

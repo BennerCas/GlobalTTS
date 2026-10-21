@@ -22,7 +22,7 @@ Cualquier agente inteligente o desarrollador que consulte este documento debe co
 [ Preprocesamiento & Limpieza Fonética (text_clean.py) ]
        │
        ▼
-[ Mistral NeMo 12B Local (Ollama - Context 8192) ]
+[ Mistral NeMo 12B Local (Ollama - Context 4096) ]
        │  ├── Modo Enhance: Inyección de tags prosódicos sin cambiar texto
        │  ├── Modo Rewrite: Reescritura narrativa en 11 estilos CO-STAR
        │  ├── Modo Translate: Adaptación a español latino neutro (es-LA)
@@ -76,7 +76,7 @@ Cualquier agente inteligente o desarrollador que consulte este documento debe co
 - **Parámetros:**
   - `temperature`: 0.35
   - `top_p`: 0.90
-  - `num_ctx`: 8192
+  - `num_ctx`: 4096
 - **Plantilla de Usuario:**
 ```
 Texto a enriquecer:
@@ -120,7 +120,7 @@ Eres el Principal Audio Narrative Director especializado en audiolibros dramáti
 - **Parámetros:**
   - `temperature`: 0.45
   - `top_p`: 0.90
-  - `num_ctx`: 8192
+  - `num_ctx`: 4096
 - **Plantilla de Usuario:**
 ```
 Texto base para transformar en narración:
@@ -163,7 +163,7 @@ Eres un Master Storyteller y Narrador de Audiolibros de renombre mundial para Gl
 - **Parámetros:**
   - `temperature`: 0.30
   - `top_p`: 0.90
-  - `num_ctx`: 8192
+  - `num_ctx`: 4096
 - **Plantilla de Usuario:**
 ```
 Texto a traducir y adaptar al español latinoamericano neutro:
@@ -199,7 +199,7 @@ Eres un Traductor Literario y Adaptador de Guiones de Audio especializado en Esp
 - **Parámetros:**
   - `temperature`: 0.20
   - `top_p`: 0.90
-  - `num_ctx`: 8192
+  - `num_ctx`: 4096
 - **Plantilla de Usuario:**
 ```
 Texto dramático a analizar para auto-casting:
