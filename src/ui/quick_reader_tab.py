@@ -103,6 +103,23 @@ class TtsPlayWorker(QThread):
             if self.volume != 1.0:
                 samples = samples * self.volume
 
+            # Guardar automáticamente en el historial infinito de lecturas
+            if len(samples) > 0:
+                try:
+                    from src.core.history import HistoryManager
+                    hm = HistoryManager()
+                    voice_meta = engine.available_voices.get(self.voice_key)
+                    v_name = voice_meta.name if voice_meta else self.voice_key
+                    hm.add_entry(
+                        text=self.text,
+                        voice_key=self.voice_key,
+                        voice_name=v_name,
+                        samples=samples,
+                        sample_rate=engine.sample_rate,
+                    )
+                except Exception:
+                    pass
+
             if not self.is_interrupted:
                 sd.play(samples, engine.sample_rate)
                 sd.wait()
@@ -474,7 +491,7 @@ class QuickReaderTab(QWidget):
 
         idx_to_select = 0
         for i, (key, profile) in enumerate(voices.items()):
-            label = f"{key} ({profile.language.upper()}, {profile.sample_rate // 1000}kHz)"
+            label = f"{profile.name} [{profile.sample_rate // 1000}kHz]"
             self.voice_combo.addItem(label, key)
             if key == current_voice:
                 idx_to_select = i

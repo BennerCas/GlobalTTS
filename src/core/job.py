@@ -35,6 +35,7 @@ BIBLIOTECA_DIR = PROJECT_ROOT / "biblioteca"
 class InterstitialItem:
     text: str
     voice_key: Optional[str] = None
+    style: str = "locutor_radio"  # "locutor_radio", "cuentacuentos", "institucional", "misterioso"
     position: str = "between_chapters"  # "start", "between_chapters", "end"
     pause_after: float = 1.0
 
@@ -42,9 +43,10 @@ class InterstitialItem:
 @dataclass
 class JobConfig:
     source_file: str
-    voice_key: str = "es_MX-claude-high"
-    secondary_voice_key: Optional[str] = "es_ES-sharvard-medium"
-    multi_voice_mode: str = "single"  # "single", "manual", "dialogue_auto"
+    voice_key: str = "kokoro-ef_dora"
+    secondary_voice_key: Optional[str] = "kokoro-em_alex"
+    voice_pool: list[str] = field(default_factory=list)  # Pool de 2 o más voces para auto-casting
+    multi_voice_mode: str = "single"  # "single", "manual", "dialogue_auto", "ai_casting"
     output_name: Optional[str] = None
     output_dir: Optional[str] = None
     cover_image_path: Optional[str] = None
@@ -146,12 +148,44 @@ class AudiobookPipeline:
                             )
                         elif self.config.narration.mode == "dialogue_analysis":
                             analysis = enhancer.analyze_dialogues(par, prompt_id=self.config.narration.prompt_id)
+                            # Casting dinámico multi-voz para personajes con emparejamiento por género
+                            char_map: dict[str, str] = {"narrador": self.config.voice_key}
+                            pool = [v for v in self.config.voice_pool if v != self.config.voice_key]
+                            if not pool and self.config.secondary_voice_key:
+                                pool = [self.config.secondary_voice_key]
+                            if not pool:
+                                pool = [self.config.voice_key]
+
+                            char_meta_gender = {
+                                c.get("name", "").strip().lower(): c.get("gender", "neutral").lower()
+                                for c in analysis.get("characters", [])
+                                if isinstance(c, dict)
+                            }
+
                             seg_texts = []
                             for seg in analysis.get("segments", []):
-                                stext = seg.get("text", "")
+                                stext = seg.get("text", "").strip()
+                                if not stext:
+                                    continue
+                                spk = seg.get("speaker", "Narrador").strip()
+                                spk_lower = spk.lower()
+                                if spk_lower not in char_map:
+                                    req_gender = char_meta_gender.get(spk_lower, "neutral")
+                                    from src.ai.piper_engine import list_available_piper_voices
+                                    v_profiles = list_available_piper_voices()
+                                    if req_gender in ("female", "male"):
+                                        subpool = [v for v in pool if v_profiles.get(v) and v_profiles[v].gender == req_gender]
+                                        chosen_voice = subpool[(len(char_map) - 1) % len(subpool)] if subpool else pool[(len(char_map) - 1) % len(pool)]
+                                    else:
+                                        chosen_voice = pool[(len(char_map) - 1) % len(pool)]
+                                    char_map[spk_lower] = chosen_voice
+                                v_assigned = char_map[spk_lower]
+
                                 emotion = seg.get("emotion")
                                 if emotion and emotion not in ("neutral", ""):
                                     stext = f"[{emotion}]{stext}[/{emotion}]"
+                                if v_assigned and v_assigned != self.config.voice_key:
+                                    stext = f"[voz:{v_assigned}]{stext}[/voz]"
                                 seg_texts.append(stext)
                             processed = " ".join(seg_texts) if seg_texts else par
                         else:
@@ -172,36 +206,44 @@ class AudiobookPipeline:
         build_res = build_utterances(doc, max_chars=350, use_markup=True)
         raw_utterances = list(build_res.utterances)
 
-        # 6. Auto-casting Multi-voz (si está habilitado)
-        if self.config.multi_voice_mode == "dialogue_auto" and self.config.secondary_voice_key:
-            emit_stage("autocast", "Aplicando auto-casting de voces en diálogos...", 9.0)
-            dialogue_chars = ('"', "«", "“", "—", "- ")
-            processed_utts = []
-            for utt in raw_utterances:
-                text_stripped = utt.text.strip()
-                if any(text_stripped.startswith(dc) for dc in dialogue_chars) and not utt.style.voice:
-                    new_style = Style(
-                        speed=utt.style.speed,
-                        gain_db=utt.style.gain_db,
-                        voice=self.config.secondary_voice_key,
-                        instruct=utt.style.instruct
-                    )
-                    processed_utts.append(
-                        Utterance(utt.text, new_style, utt.pause_after, utt.chapter_index, utt.paragraph_index, utt.is_title)
-                    )
-                else:
-                    processed_utts.append(utt)
-            raw_utterances = processed_utts
+        # 6. Auto-casting Multi-voz (si está habilitado con pool de más de 2 voces)
+        if self.config.multi_voice_mode in ("dialogue_auto", "ai_casting"):
+            pool = [v for v in self.config.voice_pool if v != self.config.voice_key]
+            if not pool and self.config.secondary_voice_key:
+                pool = [self.config.secondary_voice_key]
+            if pool:
+                emit_stage("autocast", f"Aplicando auto-casting multi-voz con pool de {len(pool)} voces...", 9.0)
+                dialogue_chars = ('"', "«", "“", "—", "- ")
+                processed_utts = []
+                dialogue_idx = 0
+                for utt in raw_utterances:
+                    text_stripped = utt.text.strip()
+                    if any(text_stripped.startswith(dc) for dc in dialogue_chars) and not utt.style.voice:
+                        assigned_v = pool[dialogue_idx % len(pool)]
+                        dialogue_idx += 1
+                        new_style = Style(
+                            speed=utt.style.speed,
+                            gain_db=utt.style.gain_db,
+                            voice=assigned_v,
+                            instruct=utt.style.instruct,
+                        )
+                        processed_utts.append(
+                            Utterance(utt.text, new_style, utt.pause_after, utt.chapter_index, utt.paragraph_index, utt.is_title)
+                        )
+                    else:
+                        processed_utts.append(utt)
+                raw_utterances = processed_utts
 
         # 7. Inserción de cuñas de audio intersticiales
         if self.config.interstitials:
-            emit_stage("interstitials", "Insertando cuñas de audio y separadores...", 9.5)
+            emit_stage("interstitials", f"Insertando {len(self.config.interstitials)} cuñas de audio...", 9.5)
             final_utts = []
             # Cuñas de inicio
             for item in self.config.interstitials:
                 if item.position == "start":
                     v_key = item.voice_key or self.config.voice_key
-                    final_utts.append(Utterance(item.text, Style(voice=v_key), item.pause_after, -1, -1))
+                    txt = f"[{item.style}]{item.text}[/{item.style}]" if item.style else item.text
+                    final_utts.append(Utterance(txt, Style(voice=v_key), item.pause_after, -1, -1))
 
             current_chapter = -1
             for utt in raw_utterances:
@@ -210,7 +252,8 @@ class AudiobookPipeline:
                     for item in self.config.interstitials:
                         if item.position == "between_chapters":
                             v_key = item.voice_key or self.config.voice_key
-                            final_utts.append(Utterance(item.text, Style(voice=v_key), item.pause_after, -1, -1))
+                            txt = f"[{item.style}]{item.text}[/{item.style}]" if item.style else item.text
+                            final_utts.append(Utterance(txt, Style(voice=v_key), item.pause_after, -1, -1))
                 current_chapter = utt.chapter_index
                 final_utts.append(utt)
 
@@ -218,7 +261,8 @@ class AudiobookPipeline:
             for item in self.config.interstitials:
                 if item.position == "end":
                     v_key = item.voice_key or self.config.voice_key
-                    final_utts.append(Utterance(item.text, Style(voice=v_key), item.pause_after, -1, -1))
+                    txt = f"[{item.style}]{item.text}[/{item.style}]" if item.style else item.text
+                    final_utts.append(Utterance(txt, Style(voice=v_key), item.pause_after, -1, -1))
 
             utterances = tuple(final_utts)
         else:

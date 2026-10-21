@@ -3,9 +3,9 @@
 > **DOCUMENTO MAESTRO VINCULANTE (SSOT - SINGLE SOURCE OF TRUTH)**  
 > **Firma Institucional:** `HUMAN AI SYNERGY BY BENNER CASTILLO - 2026®`  
 > **Motor de Inferencia Local:** Mistral NeMo 12B Instruct (`mistral-nemo-local:latest`) vía Ollama  
-> **Motor de Síntesis Vocal:** Piper VITS Local (Sherpa-ONNX 22.05 kHz / 16 kHz) con Normalización EBU R128 (-16 LUFS)  
-> **Context Window:** 8,192 tokens  
-> **Última Actualización:** 2026-10-20  
+> **Motor de Síntesis Vocal:** Dual Neural Engine — Kokoro Neural (StyleTTS2, 24 kHz) & Piper VITS (22.05 kHz) con 15 Voces en Español  
+> **Context Window:** 4,096 tokens  
+> **Última Actualización:** 2026-10-21  
 
 ---
 
@@ -24,7 +24,7 @@ Cualquier agente inteligente o desarrollador que consulte este documento debe co
        ▼
 [ Mistral NeMo 12B Local (Ollama - Context 4096) ]
        │  ├── Modo Enhance: Inyección de tags prosódicos sin cambiar texto
-       │  ├── Modo Rewrite: Reescritura narrativa en 11 estilos CO-STAR
+       │  ├── Modo Rewrite: Reescritura narrativa en 13 estilos CO-STAR
        │  ├── Modo Translate: Adaptación a español latino neutro (es-LA)
        │  └── Modo Dialogue: Auto-casting dramático narrador vs personajes
        │
@@ -32,7 +32,7 @@ Cualquier agente inteligente o desarrollador que consulte este documento debe co
 [ Intérprete Fonético & Segmentador de Cláusulas (markup/parser.py) ]
        │
        ▼
-[ Motor de Síntesis Piper VITS (piper_engine.py / ONNX DirectML) ]
+[ Motor Dual Kokoro Neural (24kHz) + Piper VITS (piper_engine.py) ]
        │
        ▼
 [ Normalización EBU R128 / Empaquetado MP3 256k & Video Karaoke MP4 ]
@@ -106,8 +106,7 @@ Eres el Principal Audio Narrative Director especializado en audiolibros dramáti
 [REGLAS DURAS OBLIGATORIAS]
 1. NO alteres, elimines ni añadas palabras al texto original. Tu intervención es exclusivamente prosódica.
 2. Todas las etiquetas de rango ([lento], [susurro], [misterioso], etc.) DEBEN cerrarse con su correspondiente etiqueta de cierre ([/lento], [/susurro], [/misterioso]).
-3. No agregues preámbulos, saludos, comentarios ni bloques de código markdown (```).
-4. Si generas razonamiento interno en <thinking>...</thinking>, asegúrate de emitir el texto final limpio de etiquetas de razonamiento.
+3. No agregues preámbulos, saludos, comentarios ni bloques de código markdown (
 ```
 
 ---
@@ -247,7 +246,7 @@ Devuelve EXCLUSIVAMENTE un bloque JSON con la siguiente estructura exacta:
 
 ---
 
-## 4. Catálogo de los 11 Estilos Narrativos Industriales
+## 4. Catálogo de Estilos Narrativos Industriales
 
 ### 1. `cuento` (Cuento Literario)
 - **Nombre:** Cuento Literario
@@ -399,6 +398,34 @@ Devuelve EXCLUSIVAMENTE un bloque JSON con la siguiente estructura exacta:
 ```
 - Proyecta la presencia de un líder transformador: claridad visionaria, convicción inquebrantable y pausas de impacto electrizante.
 - Construye la curva de intensidad hacia remates memorables que llamen a la acción inmediata.
+```
+
+---
+
+### 12. `cuentacuentos` (Cuentacuentos Mágico & Teatral)
+- **Nombre:** Cuentacuentos Mágico & Teatral
+- **Tono:** Cálido, asombroso, teatral, envolvente, con cadencia de tradición oral viva y misterio fascinante.
+- **Cadencia:** Pausada, modulada y teatral; pausas calculadas para sembrar expectación, susurros en secretos y giros vivaces.
+- **Perfil de Vocabulario:** Rico en imágenes sensoriales, fórmulas de oralidad clásica ('Cuentan los ancianos...', 'En aquel instante...'), metáforas vivas y expresividad.
+- **Guía Prosódica:** Inyecta [pausa:1s] en revelaciones, [susurro] en secretos o momentos mágicos, [misterioso] en pasajes de enigma, [lento] en descripciones profundas y [emocionado] en clímax.
+- **Addon del System Prompt:**
+```
+- Adopta la voz viva y la cadencia de un gran Maestro Cuentacuentos: modula la voz con asombro, calidez e intriga.
+- Usa pausas reflexivas [pausa:1s] antes de giros reveladores y susurros [susurro] para secretos compartidos.
+```
+
+---
+
+### 13. `locutor_radio` (Locutor de Radiofonía & Broadcast)
+- **Nombre:** Locutor de Radiofonía & Broadcast
+- **Tono:** Dinámico, vibrante, enérgico, autoritario, elocuente y con impecable dicción de cabina radial.
+- **Cadencia:** Ágil, rítmica y percutiva; ritmo sostenido con pausas breves de impacto y énfasis sonoro en conceptos clave.
+- **Perfil de Vocabulario:** Vocabulario directo, comunicativo, ágil, con giros radiofónicos de alta conexión con la audiencia.
+- **Guía Prosódica:** Aplica [enfasis] en nombres, conceptos y datos cruciales, [pausa:400ms] antes de remates de impacto, y [rapido] en transiciones dinámicas.
+- **Addon del System Prompt:**
+```
+- Proyecta la voz como un locutor estrella de radiofonía: articulación impecable, energía magnética y cadencia dinámica sin decaimiento.
+- Enfatiza fuertemente las ideas fuerza con [enfasis] y mantén el pulso rítmico vivo.
 ```
 
 ---

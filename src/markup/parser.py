@@ -46,11 +46,14 @@ EFFECTS: dict[str, _Effect] = {
     "serio": _Effect(speed=0.95, instruct="habla en tono serio y solemne"),
     "misterioso": _Effect(speed=0.9, gain_db=-4.0, instruct="habla con tono misterioso y pausado"),
     "enojado": _Effect(speed=1.05, gain_db=3.0, instruct="habla con enojo contenido"),
+    "cuentacuentos": _Effect(speed=0.92, gain_db=0.5, instruct="narra con cadencia cálida de cuentacuentos teatral"),
+    "locutor_radio": _Effect(speed=1.08, gain_db=2.0, instruct="locución radial dinámica, enérgica y proyectada"),
 }
 _ALIASES = {
     "rápido": "rapido", "énfasis": "enfasis", "slow": "lento", "fast": "rapido",
     "whisper": "susurro", "pause": "pausa", "voice": "voz", "happy": "alegre",
     "sad": "triste", "angry": "enojado", "excited": "emocionado",
+    "radio": "locutor_radio", "locutor": "locutor_radio", "cuento": "cuentacuentos",
 }
 _SPECIAL = {"pausa", "voz"}
 

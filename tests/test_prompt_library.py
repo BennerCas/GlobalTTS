@@ -54,6 +54,8 @@ def test_catalog_contains_all_11_narrative_styles(temp_library: PromptLibrary):
         "cyberpunk_scifi",
         "confesion_intima",
         "oratoria_motivacional",
+        "cuentacuentos",
+        "locutor_radio",
     ]
 
     registered_styles = temp_library.list_style_keys()
@@ -227,7 +229,7 @@ def test_prompt_library_markdown_roundtrip(tmp_path: Path):
     assert md_path.exists()
     content = md_path.read_text(encoding="utf-8")
     assert "Catálogo Maestro de Modos de IA" in content
-    assert "Catálogo de los 11 Estilos Narrativos Industriales" in content
+    assert "Estilos Narrativos Industriales" in content
 
     # Crear una nueva librería vacía e importar desde el Markdown generado
     json_path2 = tmp_path / "prompts_imported.json"
@@ -239,7 +241,7 @@ def test_prompt_library_markdown_roundtrip(tmp_path: Path):
     assert count >= 15
     # Comprobar que temperature se restauró al valor del markdown
     assert lib2.modes["builtin_enhance"].parameters["temperature"] == 0.35
-    assert len(lib2.styles) == 11
+    assert len(lib2.styles) == len(lib1.styles)
     assert lib2.get_style("terror_psicologico") is not None
 
 

@@ -566,8 +566,8 @@ class PromptLibrary:
             "> **DOCUMENTO MAESTRO VINCULANTE (SSOT - SINGLE SOURCE OF TRUTH)**  ",
             "> **Firma Institucional:** `HUMAN AI SYNERGY BY BENNER CASTILLO - 2026®`  ",
             "> **Motor de Inferencia Local:** Mistral NeMo 12B Instruct (`mistral-nemo-local:latest`) vía Ollama  ",
-            "> **Motor de Síntesis Vocal:** Piper VITS Local (Sherpa-ONNX 22.05 kHz / 16 kHz) con Normalización EBU R128 (-16 LUFS)  ",
-            "> **Context Window:** 8,192 tokens  ",
+            "> **Motor de Síntesis Vocal:** Dual Neural Engine — Kokoro Neural (StyleTTS2, 24 kHz) & Piper VITS (22.05 kHz) con 15 Voces en Español  ",
+            "> **Context Window:** 4,096 tokens  ",
             f"> **Última Actualización:** {datetime.now().strftime('%Y-%m-%d')}  ",
             "",
             "---",
@@ -587,7 +587,7 @@ class PromptLibrary:
             "       ▼",
             "[ Mistral NeMo 12B Local (Ollama - Context 4096) ]",
             "       │  ├── Modo Enhance: Inyección de tags prosódicos sin cambiar texto",
-            "       │  ├── Modo Rewrite: Reescritura narrativa en 11 estilos CO-STAR",
+            "       │  ├── Modo Rewrite: Reescritura narrativa en 13 estilos CO-STAR",
             "       │  ├── Modo Translate: Adaptación a español latino neutro (es-LA)",
             "       │  └── Modo Dialogue: Auto-casting dramático narrador vs personajes",
             "       │",
@@ -595,7 +595,7 @@ class PromptLibrary:
             "[ Intérprete Fonético & Segmentador de Cláusulas (markup/parser.py) ]",
             "       │",
             "       ▼",
-            "[ Motor de Síntesis Piper VITS (piper_engine.py / ONNX DirectML) ]",
+            "[ Motor Dual Kokoro Neural (24kHz) + Piper VITS (piper_engine.py) ]",
             "       │",
             "       ▼",
             "[ Normalización EBU R128 / Empaquetado MP3 256k & Video Karaoke MP4 ]",
@@ -660,7 +660,7 @@ class PromptLibrary:
             mode_num += 1
 
         lines.extend([
-            "## 4. Catálogo de los 11 Estilos Narrativos Industriales",
+            "## 4. Catálogo de Estilos Narrativos Industriales",
             ""
         ])
 

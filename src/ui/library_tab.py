@@ -1,11 +1,12 @@
-"""Pestaña de Biblioteca y Reproductor Integrado para GlobalTTS.
+"""Pestaña de Biblioteca, Catálogo de Audiolibros e Historial Infinito para GlobalTTS.
 
 Diseño Ejecutivo Obsidian & Titanium:
-- Cero emojis: sustituidos por glifos de línea [ ► ], [ || ], [ ■ ], [ ⟳ ], [ ↗ ].
+- Dos vistas integradas:
+  1. Catálogo de Audiolibros Completos y Videos Karaoke MP4.
+  2. Historial Infinito de Lecturas Rápidas generadas desde la pestaña de Lector Rápido.
 - Reproductor multimedia de alta fidelidad con slider de precisión y telemetría de tiempo.
-- Selector de obras con metadatos técnicos completos (Voz, oraciones, duración, EBU R128).
-- Gestión y lanzamiento de Video Karaoke MP4 y masters de audio MP3/FLAC.
 - Acceso sobrio y profesional a YouTube Studio y Spotify for Podcasters.
+- Firma institucional 'HUMAN AI SYNERGY BY BENNER CASTILLO'.
 """
 from __future__ import annotations
 
@@ -17,7 +18,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Optional
 
-from PyQt6.QtCore import QUrl, Qt
+from PyQt6.QtCore import QUrl, Qt, pyqtSignal
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtWidgets import (
@@ -31,18 +32,25 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QSlider,
     QSplitter,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
+
+from src.core.history import HistoryManager
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 BIBLIOTECA_DIR = PROJECT_ROOT / "biblioteca"
 
 
 class LibraryTab(QWidget):
-    """Pestaña de exploración de la biblioteca y reproductor integrado."""
+    """Pestaña de exploración de la biblioteca, audiolibros e historial infinito."""
+
+    # Señal para enviar texto al lector rápido si el usuario lo solicita
+    load_text_requested = pyqtSignal(str)
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -50,8 +58,12 @@ class LibraryTab(QWidget):
         self.audio_output = QAudioOutput(self)
         self.player.setAudioOutput(self.audio_output)
 
+        self.history_manager = HistoryManager()
         self.books: list[dict] = []
+        self.history_items: list[dict] = []
         self.selected_book_data: Optional[dict] = None
+        self.selected_history_data: Optional[dict] = None
+
         self.init_ui()
         self.setup_player_events()
         self.refresh_library()
@@ -66,8 +78,8 @@ class LibraryTab(QWidget):
         top_bar.setSpacing(8)
 
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("[ ⌕ ] Buscar en la biblioteca por título o autor...")
-        self.search_edit.textChanged.connect(self.filter_books)
+        self.search_edit.setPlaceholderText("[ ⌕ ] Buscar por título, autor o texto...")
+        self.search_edit.textChanged.connect(self.filter_items)
         top_bar.addWidget(self.search_edit, stretch=1)
 
         refresh_btn = QPushButton("[ ⟳ ] Actualizar")
@@ -82,8 +94,11 @@ class LibraryTab(QWidget):
 
         main_layout.addLayout(top_bar)
 
-        # Splitter central: Lista de obras (izq) y Reproductor Ejecutivo (der)
+        # Splitter central: Catálogo / Historial (izq) y Reproductor Ejecutivo (der)
         splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        # Sub-pestañas de la izquierda
+        self.catalog_tabs = QTabWidget()
 
         # 1. Tabla de audiolibros
         self.table = QTableWidget()
@@ -93,7 +108,19 @@ class LibraryTab(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.itemSelectionChanged.connect(self.on_book_selected)
-        splitter.addWidget(self.table)
+        self.catalog_tabs.addTab(self.table, "AUDIOLIBROS Y VIDEOS")
+
+        # 2. Tabla de historial infinito de lecturas rápidas
+        self.history_table = QTableWidget()
+        self.history_table.setColumnCount(4)
+        self.history_table.setHorizontalHeaderLabels(["FECHA / HORA", "VOZ NEURAL", "DURACIÓN", "TEXTO INICIAL"])
+        self.history_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.history_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.history_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.history_table.itemSelectionChanged.connect(self.on_history_selected)
+        self.catalog_tabs.addTab(self.history_table, "HISTORIAL DE LECTURAS RÁPIDAS")
+
+        splitter.addWidget(self.catalog_tabs)
 
         # 2. Panel de Detalles y Reproductor Multimedia Ejecutivo
         self.detail_panel = QFrame()
@@ -102,18 +129,18 @@ class LibraryTab(QWidget):
         detail_layout.setSpacing(10)
         detail_layout.setContentsMargins(14, 14, 14, 14)
 
-        # Título y metadatos del libro
-        self.lbl_book_title = QLabel("Selecciona un audiolibro del catálogo")
+        # Título y metadatos
+        self.lbl_book_title = QLabel("Selecciona un elemento para reproducir")
         self.lbl_book_title.setObjectName("titleLabel")
         self.lbl_book_title.setWordWrap(True)
         detail_layout.addWidget(self.lbl_book_title)
 
-        self.lbl_book_meta = QLabel("Metadatos técnicos: Selecciona un elemento para inspeccionar.")
+        self.lbl_book_meta = QLabel("Metadatos técnicos: Selecciona un audiolibro o lectura rápida.")
         self.lbl_book_meta.setObjectName("subtitleLabel")
         self.lbl_book_meta.setWordWrap(True)
         detail_layout.addWidget(self.lbl_book_meta)
 
-        # Portada / Carátula
+        # Vista central: Portada para audiolibros, o Caja de texto para lecturas rápidas
         self.cover_label = QLabel("[ Sin Portada ]")
         self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.cover_label.setFixedSize(170, 170)
@@ -122,13 +149,31 @@ class LibraryTab(QWidget):
         )
         detail_layout.addWidget(self.cover_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
+        self.text_preview = QTextEdit()
+        self.text_preview.setReadOnly(True)
+        self.text_preview.setPlaceholderText("Texto íntegro de la lectura rápida...")
+        self.text_preview.setMaximumHeight(170)
+        self.text_preview.setStyleSheet("""
+            QTextEdit {
+                background-color: #0b0f16;
+                color: #cbd5e1;
+                border: 1px solid #1e2633;
+                border-radius: 6px;
+                font-size: 12px;
+                line-height: 1.4;
+            }
+            QScrollBar:vertical { width: 4px; background: transparent; }
+        """)
+        self.text_preview.setVisible(False)
+        detail_layout.addWidget(self.text_preview)
+
         # Caja de Reproducción Multimedia
         player_box = QFrame()
         player_box.setObjectName("metricCard")
         p_lay = QVBoxLayout(player_box)
         p_lay.setSpacing(8)
 
-        # Slider de posición y marcas de tiempo en monospace
+        # Slider de posición y marcas de tiempo
         slider_row = QHBoxLayout()
         slider_row.setSpacing(8)
         self.lbl_cur_time = QLabel("00:00")
@@ -170,7 +215,7 @@ class LibraryTab(QWidget):
         p_lay.addLayout(controls_row)
         detail_layout.addWidget(player_box)
 
-        # Botones de Acción de Archivos
+        # Botones de Acción de Archivos y Utilidades
         actions_grid = QHBoxLayout()
         actions_grid.setSpacing(8)
 
@@ -178,17 +223,29 @@ class LibraryTab(QWidget):
         self.btn_open_video.setObjectName("actionButton")
         self.btn_open_video.clicked.connect(self.open_video)
 
-        self.btn_open_folder = QPushButton("[ ↗ ] Abrir Carpeta del Libro")
+        self.btn_open_folder = QPushButton("[ ↗ ] Abrir Carpeta")
         self.btn_open_folder.setObjectName("secondaryActionButton")
         self.btn_open_folder.clicked.connect(self.open_current_folder)
 
+        self.btn_load_to_reader = QPushButton("[ ↗ ] Cargar en Lector Rápido")
+        self.btn_load_to_reader.setObjectName("actionButton")
+        self.btn_load_to_reader.clicked.connect(self.load_selected_to_reader)
+        self.btn_load_to_reader.setVisible(False)
+
+        self.btn_delete_history = QPushButton("[ × ] Eliminar")
+        self.btn_delete_history.setObjectName("secondaryActionButton")
+        self.btn_delete_history.clicked.connect(self.delete_current_history_entry)
+        self.btn_delete_history.setVisible(False)
+
         actions_grid.addWidget(self.btn_open_video)
         actions_grid.addWidget(self.btn_open_folder)
+        actions_grid.addWidget(self.btn_load_to_reader)
+        actions_grid.addWidget(self.btn_delete_history)
         detail_layout.addLayout(actions_grid)
 
         # Módulo de Distribución Ejecutiva
-        dist_group = QGroupBox("Distribución y Plataformas")
-        dist_lay = QHBoxLayout(dist_group)
+        self.dist_group = QGroupBox("Distribución y Plataformas")
+        dist_lay = QHBoxLayout(self.dist_group)
         dist_lay.setContentsMargins(10, 8, 10, 8)
         dist_lay.setSpacing(8)
 
@@ -202,11 +259,11 @@ class LibraryTab(QWidget):
 
         dist_lay.addWidget(self.btn_youtube)
         dist_lay.addWidget(self.btn_spotify)
-        detail_layout.addWidget(dist_group)
+        detail_layout.addWidget(self.dist_group)
 
         detail_layout.addStretch()
         splitter.addWidget(self.detail_panel)
-        splitter.setSizes([500, 440])
+        splitter.setSizes([520, 440])
 
         main_layout.addWidget(splitter)
 
@@ -215,44 +272,47 @@ class LibraryTab(QWidget):
         self.player.durationChanged.connect(self.on_duration_changed)
 
     def refresh_library(self):
+        # 1. Cargar audiolibros
         self.books = []
-        if not BIBLIOTECA_DIR.exists():
-            return
+        if BIBLIOTECA_DIR.exists():
+            for item in sorted(BIBLIOTECA_DIR.iterdir(), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True):
+                if item.is_dir() and item.name != "historial_lecturas":
+                    meta_files = list(item.glob("*_metadata.json"))
+                    meta = {}
+                    if meta_files:
+                        try:
+                            with open(meta_files[0], "r", encoding="utf-8") as f:
+                                meta = json.load(f)
+                        except Exception:
+                            pass
 
-        for item in sorted(BIBLIOTECA_DIR.iterdir(), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True):
-            if item.is_dir():
-                meta_files = list(item.glob("*_metadata.json"))
-                meta = {}
-                if meta_files:
-                    try:
-                        with open(meta_files[0], "r", encoding="utf-8") as f:
-                            meta = json.load(f)
-                    except Exception:
-                        pass
+                    mp3_files = list(item.glob("*.mp3"))
+                    mp4_files = list(item.glob("*.mp4"))
+                    flac_files = list(item.glob("*.flac")) + list(item.glob("*.wav"))
+                    cover_files = list(item.glob("cover.*"))
 
-                mp3_files = list(item.glob("*.mp3"))
-                mp4_files = list(item.glob("*.mp4"))
-                flac_files = list(item.glob("*.flac")) + list(item.glob("*.wav"))
-                cover_files = list(item.glob("cover.*"))
+                    self.books.append({
+                        "folder": item,
+                        "title": meta.get("output_name") or item.name,
+                        "duration": meta.get("duration_seconds", 0),
+                        "created": meta.get("created_at", ""),
+                        "mp3": mp3_files[0] if mp3_files else None,
+                        "mp4": mp4_files[0] if mp4_files else None,
+                        "master": flac_files[0] if flac_files else None,
+                        "cover": cover_files[0] if cover_files else None,
+                        "meta": meta,
+                    })
 
-                self.books.append({
-                    "folder": item,
-                    "title": meta.get("output_name") or item.name,
-                    "duration": meta.get("duration_seconds", 0),
-                    "created": meta.get("created_at", ""),
-                    "mp3": mp3_files[0] if mp3_files else None,
-                    "mp4": mp4_files[0] if mp4_files else None,
-                    "master": flac_files[0] if flac_files else None,
-                    "cover": cover_files[0] if cover_files else None,
-                    "meta": meta,
-                })
+        # 2. Cargar historial infinito
+        self.history_items = self.history_manager.list_entries()
 
-        self.filter_books(self.search_edit.text())
+        self.filter_items(self.search_edit.text())
 
-    def filter_books(self, query: str = ""):
-        self.table.setRowCount(0)
+    def filter_items(self, query: str = ""):
         q = query.lower().strip()
 
+        # Filtrar tabla de libros
+        self.table.setRowCount(0)
         for b in self.books:
             title = b["title"]
             if q and q not in title.lower():
@@ -261,19 +321,14 @@ class LibraryTab(QWidget):
             row = self.table.rowCount()
             self.table.insertRow(row)
 
-            # Col 0: Título
             item_title = QTableWidgetItem(title)
             item_title.setData(Qt.ItemDataRole.UserRole, b)
             self.table.setItem(row, 0, item_title)
 
-            # Col 1: Duración
             dur_str = str(timedelta(seconds=int(b["duration"]))) if b["duration"] else "--:--"
             self.table.setItem(row, 1, QTableWidgetItem(dur_str))
-
-            # Col 2: Fecha
             self.table.setItem(row, 2, QTableWidgetItem(b["created"][:10] if b["created"] else "--"))
 
-            # Col 3: Formatos con insignias de texto sobrias
             formats = []
             if b["mp3"]:
                 formats.append("[ MP3 ]")
@@ -283,8 +338,24 @@ class LibraryTab(QWidget):
                 formats.append("[ MP4 ]")
             self.table.setItem(row, 3, QTableWidgetItem(" ".join(formats)))
 
-        if self.table.rowCount() > 0:
-            self.table.selectRow(0)
+        # Filtrar tabla de historial
+        self.history_table.setRowCount(0)
+        for h in self.history_items:
+            txt = h.get("text", "")
+            vname = h.get("voice_name", "")
+            if q and (q not in txt.lower() and q not in vname.lower()):
+                continue
+
+            row = self.history_table.rowCount()
+            self.history_table.insertRow(row)
+
+            self.history_table.setItem(row, 0, QTableWidgetItem(h.get("fecha_completa", "")))
+            self.history_table.setItem(row, 1, QTableWidgetItem(vname))
+            self.history_table.setItem(row, 2, QTableWidgetItem(h.get("duracion_formato", "--")))
+
+            snippet_item = QTableWidgetItem(h.get("snippet", ""))
+            snippet_item.setData(Qt.ItemDataRole.UserRole, h)
+            self.history_table.setItem(row, 3, snippet_item)
 
     def on_book_selected(self):
         selected_rows = self.table.selectedItems()
@@ -293,8 +364,16 @@ class LibraryTab(QWidget):
 
         book_data = self.table.item(selected_rows[0].row(), 0).data(Qt.ItemDataRole.UserRole)
         self.selected_book_data = book_data
+        self.selected_history_data = None
 
-        # Actualizar UI de detalles
+        # Cambiar modo visual a libro
+        self.cover_label.setVisible(True)
+        self.text_preview.setVisible(False)
+        self.btn_open_video.setVisible(True)
+        self.dist_group.setVisible(True)
+        self.btn_load_to_reader.setVisible(False)
+        self.btn_delete_history.setVisible(False)
+
         self.lbl_book_title.setText(book_data["title"])
         meta = book_data["meta"]
         dur = meta.get("duration_seconds", 0)
@@ -307,7 +386,6 @@ class LibraryTab(QWidget):
         )
         self.lbl_book_meta.setText(meta_text)
 
-        # Portada
         if book_data["cover"] and book_data["cover"].exists():
             pix = QPixmap(str(book_data["cover"])).scaled(
                 170, 170, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
@@ -316,14 +394,55 @@ class LibraryTab(QWidget):
         else:
             self.cover_label.setText("[ Sin Portada ]")
 
-        # Configurar audio en reproductor
         if book_data["mp3"] and book_data["mp3"].exists():
             self.player.setSource(QUrl.fromLocalFile(str(book_data["mp3"])))
+            self.btn_play.setEnabled(True)
+        elif book_data["master"] and book_data["master"].exists():
+            self.player.setSource(QUrl.fromLocalFile(str(book_data["master"])))
             self.btn_play.setEnabled(True)
         else:
             self.btn_play.setEnabled(False)
 
         self.btn_open_video.setEnabled(bool(book_data["mp4"] and book_data["mp4"].exists()))
+
+    def on_history_selected(self):
+        selected_rows = self.history_table.selectedItems()
+        if not selected_rows:
+            return
+
+        row = selected_rows[0].row()
+        item = self.history_table.item(row, 3)
+        if not item:
+            return
+
+        h_data = item.data(Qt.ItemDataRole.UserRole)
+        self.selected_history_data = h_data
+        self.selected_book_data = None
+
+        # Cambiar modo visual a lectura rápida
+        self.cover_label.setVisible(False)
+        self.text_preview.setVisible(True)
+        self.text_preview.setPlainText(h_data.get("text", ""))
+        self.btn_open_video.setVisible(False)
+        self.dist_group.setVisible(False)
+        self.btn_load_to_reader.setVisible(True)
+        self.btn_delete_history.setVisible(True)
+
+        self.lbl_book_title.setText(f"[ Lectura Rápida ] {h_data.get('snippet', '')[:50]}")
+        meta_text = (
+            f"Voz: {h_data.get('voice_name', '')}  •  "
+            f"Duración: {h_data.get('duracion_formato', '--')}  •  "
+            f"Fecha: {h_data.get('fecha_completa', '')}\n"
+            f"Firma: {h_data.get('firma', '')}"
+        )
+        self.lbl_book_meta.setText(meta_text)
+
+        audio_file = Path(h_data.get("file_path", ""))
+        if audio_file.exists():
+            self.player.setSource(QUrl.fromLocalFile(str(audio_file)))
+            self.btn_play.setEnabled(True)
+        else:
+            self.btn_play.setEnabled(False)
 
     def toggle_play(self):
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
@@ -353,8 +472,27 @@ class LibraryTab(QWidget):
             os.startfile(self.selected_book_data["mp4"])
 
     def open_current_folder(self):
-        if self.selected_book_data and self.selected_book_data["folder"]:
+        if self.selected_book_data and self.selected_book_data.get("folder"):
             os.startfile(self.selected_book_data["folder"])
+        elif self.selected_history_data:
+            p = Path(self.selected_history_data.get("file_path", ""))
+            if p.exists():
+                os.startfile(p.parent)
+
+    def load_selected_to_reader(self):
+        if self.selected_history_data:
+            txt = self.selected_history_data.get("text", "")
+            self.load_text_requested.emit(txt)
+
+    def delete_current_history_entry(self):
+        if not self.selected_history_data:
+            return
+        hid = self.selected_history_data.get("id")
+        reply = QMessageBox.question(self, "Eliminar Lectura", "¿Deseas eliminar permanentemente esta lectura del historial?")
+        if reply == QMessageBox.StandardButton.Yes:
+            self.stop_playback()
+            self.history_manager.delete_entry(hid)
+            self.refresh_library()
 
     def open_youtube_dialog(self):
         if not self.selected_book_data:

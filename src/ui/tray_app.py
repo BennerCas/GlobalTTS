@@ -166,6 +166,7 @@ class MainWindow(QDialog):
         self.timer.timeout.connect(self.update_timer_tick)
         self.current_utt_count = 0
         self.total_utts = 0
+        self.voices_dict = list_available_piper_voices()
 
         self.init_ui()
 
@@ -271,7 +272,7 @@ class MainWindow(QDialog):
         gen_layout.setContentsMargins(10, 10, 10, 10)
         gen_layout.setSpacing(8)
 
-        # Disposición en 2 Columnas responsivas sin ScrollArea para aprovechar la pantalla
+        # Disposición en 2 Columnas responsivas sin ScrollArea para aprovechar la pantalla en 16:9
         cols_lay = QHBoxLayout()
         cols_lay.setSpacing(10)
 
@@ -315,49 +316,75 @@ class MainWindow(QDialog):
         batch_lay.addWidget(self.batch_table)
         left_col.addWidget(batch_group)
 
-        # 2. Portada y Cuñas Intersticiales (Radio / Separadores)
+        # 2. Portada y Cuñas Intersticiales (Radio / Jingles / Separadores)
         extra_group = QGroupBox("Portada y Cuñas Intersticiales")
-        extra_lay = QFormLayout(extra_group)
-        extra_lay.setContentsMargins(10, 10, 10, 10)
+        extra_lay = QVBoxLayout(extra_group)
+        extra_lay.setContentsMargins(10, 8, 10, 8)
         extra_lay.setSpacing(6)
 
         cover_row = QHBoxLayout()
+        cover_row.addWidget(QLabel("Portada:"))
         self.cover_edit = QLineEdit()
         self.cover_edit.setPlaceholderText("Ruta a imagen de portada (.png, .jpg)... opcional")
         btn_cover = QPushButton("Examinar...")
         btn_cover.setObjectName("secondaryActionButton")
         btn_cover.clicked.connect(self.select_cover_image)
-        cover_row.addWidget(self.cover_edit)
+        cover_row.addWidget(self.cover_edit, stretch=1)
         cover_row.addWidget(btn_cover)
-        extra_lay.addRow("Portada Libro/Video:", cover_row)
+        extra_lay.addLayout(cover_row)
 
-        interstitial_box = QVBoxLayout()
-        self.chk_interstitial = QCheckBox("Insertar cuña / separador entre capítulos")
-        self.chk_interstitial.toggled.connect(lambda v: self.interstitial_frame.setEnabled(v))
-        interstitial_box.addWidget(self.chk_interstitial)
+        cunas_hdr = QHBoxLayout()
+        self.chk_interstitial = QCheckBox("Insertar cuñas / separadores de audio")
+        cunas_hdr.addWidget(self.chk_interstitial)
+        cunas_hdr.addStretch()
 
         self.interstitial_frame = QFrame()
-        cuña_lay = QHBoxLayout(self.interstitial_frame)
-        cuña_lay.setContentsMargins(0, 0, 0, 0)
-        self.interstitial_text = QLineEdit("Estás escuchando la obra en GlobalTTS.")
-        self.interstitial_voice = QComboBox()
-        self.voices_dict = list_available_piper_voices()
-        for k, v in self.voices_dict.items():
-            self.interstitial_voice.addItem(v.name, k)
+        self.chk_interstitial.toggled.connect(lambda v: self.interstitial_frame.setEnabled(v))
 
-        self.btn_preview_interstitial = QPushButton("[ ► ] Previa")
-        self.btn_preview_interstitial.setObjectName("actionButton")
-        self.btn_preview_interstitial.clicked.connect(self.preview_interstitial)
+        btn_add_cuna = QPushButton("[ + ] Añadir Cuña")
+        btn_add_cuna.setObjectName("secondaryActionButton")
+        btn_add_cuna.clicked.connect(self.add_cuna_row_default)
+        cunas_hdr.addWidget(btn_add_cuna)
 
-        cuña_lay.addWidget(QLabel("Texto:"))
-        cuña_lay.addWidget(self.interstitial_text, stretch=1)
-        cuña_lay.addWidget(QLabel("Voz:"))
-        cuña_lay.addWidget(self.interstitial_voice)
-        cuña_lay.addWidget(self.btn_preview_interstitial)
+        btn_del_cuna = QPushButton("[ − ] Quitar Cuña")
+        btn_del_cuna.setObjectName("secondaryActionButton")
+        btn_del_cuna.clicked.connect(self.remove_selected_cuna)
+        cunas_hdr.addWidget(btn_del_cuna)
+
+        btn_prev_cuna = QPushButton("[ ► ] Previa")
+        btn_prev_cuna.setObjectName("actionButton")
+        btn_prev_cuna.clicked.connect(self.preview_selected_cuna)
+        cunas_hdr.addWidget(btn_prev_cuna)
+        extra_lay.addLayout(cunas_hdr)
+
+        cuna_lay = QVBoxLayout(self.interstitial_frame)
+        cuna_lay.setContentsMargins(0, 0, 0, 0)
+        cuna_lay.setSpacing(4)
+
+        self.table_cunas = QTableWidget()
+        self.table_cunas.setColumnCount(5)
+        self.table_cunas.setHorizontalHeaderLabels(["Texto Cuña", "Posición", "Voz", "Estilo", "Pausa"])
+        self.table_cunas.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.table_cunas.setColumnWidth(1, 130)
+        self.table_cunas.setColumnWidth(2, 175)
+        self.table_cunas.setColumnWidth(3, 140)
+        self.table_cunas.setColumnWidth(4, 55)
+        self.table_cunas.setMaximumHeight(115)
+        self.table_cunas.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table_cunas.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 4px; background: transparent; }")
+        cuna_lay.addWidget(self.table_cunas)
 
         self.interstitial_frame.setEnabled(False)
-        interstitial_box.addWidget(self.interstitial_frame)
-        extra_lay.addRow("Cuña Radial:", interstitial_box)
+        extra_lay.addWidget(self.interstitial_frame)
+
+        # Cargar cuña inicial predeterminada
+        self.add_cuna_row(
+            text="Estás escuchando la obra en GlobalTTS.",
+            position="between_chapters",
+            voice_key="kokoro-am_michael" if "kokoro-am_michael" in self.voices_dict else next(iter(self.voices_dict)),
+            style="locutor_radio",
+            pause=1.0,
+        )
 
         left_col.addWidget(extra_group)
         left_col.addStretch()
@@ -369,34 +396,71 @@ class MainWindow(QDialog):
         right_col = QVBoxLayout()
         right_col.setSpacing(8)
 
-        # 3. Configuración de Voz y Auto-Casting
-        voice_group = QGroupBox("Voces y Auto-Casting Multi-Voz")
-        voice_lay = QFormLayout(voice_group)
-        voice_lay.setContentsMargins(10, 10, 10, 10)
+        # 3. Configuración de Voz y Auto-Casting Multi-Voz
+        voice_group = QGroupBox("Voces y Auto-Casting Multi-Voz (15 Voces Neurales)")
+        voice_lay = QVBoxLayout(voice_group)
+        voice_lay.setContentsMargins(10, 8, 10, 8)
         voice_lay.setSpacing(6)
 
+        v_main_row = QHBoxLayout()
+        v_main_row.addWidget(QLabel("Voz Principal (Narrador):"))
         self.voice_combo = QComboBox()
         for k, v in self.voices_dict.items():
-            self.voice_combo.addItem(f"{v.name} ({v.language.upper()})", k)
-        default_idx = self.voice_combo.findData("es_MX-claude-high")
+            tag = "24kHz Studio" if v.engine == "kokoro" else f"{v.sample_rate // 1000}kHz"
+            self.voice_combo.addItem(f"{v.name} [{tag}]", k)
+        
+        default_pref = "kokoro-ef_dora" if "kokoro-ef_dora" in self.voices_dict else "es_MX-claude-high"
+        default_idx = self.voice_combo.findData(default_pref)
         if default_idx >= 0:
             self.voice_combo.setCurrentIndex(default_idx)
-        voice_lay.addRow("Voz Principal:", self.voice_combo)
+        v_main_row.addWidget(self.voice_combo, stretch=1)
+        voice_lay.addLayout(v_main_row)
 
-        autocast_row = QHBoxLayout()
-        self.chk_autocast = QCheckBox("Auto-Casting en diálogos")
+        pool_hdr = QHBoxLayout()
+        self.chk_autocast = QCheckBox("Auto-Casting Multi-Voz con IA en diálogos")
         self.chk_autocast.setChecked(True)
-        self.sec_voice_combo = QComboBox()
-        for k, v in self.voices_dict.items():
-            self.sec_voice_combo.addItem(f"{v.name} ({v.language.upper()})", k)
-        sec_idx = self.sec_voice_combo.findData("es_ES-sharvard-medium")
-        if sec_idx >= 0:
-            self.sec_voice_combo.setCurrentIndex(sec_idx)
+        self.chk_autocast.toggled.connect(lambda v: self.pool_frame.setEnabled(v))
+        pool_hdr.addWidget(self.chk_autocast)
+        pool_hdr.addStretch()
 
-        autocast_row.addWidget(self.chk_autocast)
-        autocast_row.addWidget(QLabel("Voz Diálogos:"))
-        autocast_row.addWidget(self.sec_voice_combo, stretch=1)
-        voice_lay.addRow("Multi-Voz:", autocast_row)
+        btn_pool_all = QPushButton("Todas")
+        btn_pool_all.setObjectName("secondaryActionButton")
+        btn_pool_all.clicked.connect(lambda: self.set_pool_selection("all"))
+        pool_hdr.addWidget(btn_pool_all)
+
+        btn_pool_kokoro = QPushButton("Solo Kokoro")
+        btn_pool_kokoro.setObjectName("secondaryActionButton")
+        btn_pool_kokoro.clicked.connect(lambda: self.set_pool_selection("kokoro"))
+        pool_hdr.addWidget(btn_pool_kokoro)
+
+        btn_pool_clear = QPushButton("Limpiar")
+        btn_pool_clear.setObjectName("secondaryActionButton")
+        btn_pool_clear.clicked.connect(lambda: self.set_pool_selection("none"))
+        pool_hdr.addWidget(btn_pool_clear)
+
+        btn_test_pool = QPushButton("[ ► ] Probar")
+        btn_test_pool.setObjectName("actionButton")
+        btn_test_pool.clicked.connect(self.test_selected_pool_voice)
+        pool_hdr.addWidget(btn_test_pool)
+        voice_lay.addLayout(pool_hdr)
+
+        self.pool_frame = QFrame()
+        pool_inner = QVBoxLayout(self.pool_frame)
+        pool_inner.setContentsMargins(0, 0, 0, 0)
+
+        self.voice_pool_table = QTableWidget()
+        self.voice_pool_table.setColumnCount(3)
+        self.voice_pool_table.setHorizontalHeaderLabels(["Casting", "Voz Neural", "Calidad / Perfil"])
+        self.voice_pool_table.setColumnWidth(0, 60)
+        self.voice_pool_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.voice_pool_table.setColumnWidth(2, 170)
+        self.voice_pool_table.setMaximumHeight(115)
+        self.voice_pool_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.voice_pool_table.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 4px; background: transparent; }")
+        pool_inner.addWidget(self.voice_pool_table)
+        voice_lay.addWidget(self.pool_frame)
+
+        self.populate_voice_pool_table()
         right_col.addWidget(voice_group)
 
         # 4. Modo Narración / Análisis con Mistral NeMo Local
@@ -625,19 +689,174 @@ class MainWindow(QDialog):
         if img:
             self.cover_edit.setText(img)
 
-    def preview_interstitial(self):
-        text = self.interstitial_text.text().strip()
-        voice = self.interstitial_voice.currentData()
+    def add_cuna_row_default(self):
+        v_def = "kokoro-am_michael" if "kokoro-am_michael" in self.voices_dict else next(iter(self.voices_dict))
+        self.add_cuna_row(
+            text="Estás escuchando la obra en GlobalTTS.",
+            position="between_chapters",
+            voice_key=v_def,
+            style="locutor_radio",
+            pause=1.0,
+        )
+
+    def add_cuna_row(self, text: str, position: str, voice_key: str, style: str, pause: float = 1.0):
+        row = self.table_cunas.rowCount()
+        self.table_cunas.insertRow(row)
+
+        # Col 0: Texto
+        txt_item = QTableWidgetItem(text)
+        self.table_cunas.setItem(row, 0, txt_item)
+
+        # Col 1: Posición Combo
+        pos_combo = QComboBox()
+        pos_combo.addItem("Entre Capítulos", "between_chapters")
+        pos_combo.addItem("Entre Párrafos", "between_paragraphs")
+        pos_combo.addItem("Al Inicio", "start")
+        pos_combo.addItem("Al Final", "end")
+        idx_p = pos_combo.findData(position)
+        if idx_p >= 0:
+            pos_combo.setCurrentIndex(idx_p)
+        self.table_cunas.setCellWidget(row, 1, pos_combo)
+
+        # Col 2: Voz Combo
+        v_combo = QComboBox()
+        for k, v in self.voices_dict.items():
+            tag = "24k" if v.engine == "kokoro" else f"{v.sample_rate // 1000}k"
+            v_combo.addItem(f"{v.name} [{tag}]", k)
+        idx_v = v_combo.findData(voice_key)
+        if idx_v >= 0:
+            v_combo.setCurrentIndex(idx_v)
+        self.table_cunas.setCellWidget(row, 2, v_combo)
+
+        # Col 3: Estilo Combo
+        st_combo = QComboBox()
+        for st in self.prompt_library.list_styles():
+            st_combo.addItem(st.name, st.id)
+        idx_s = st_combo.findData(style)
+        if idx_s >= 0:
+            st_combo.setCurrentIndex(idx_s)
+        self.table_cunas.setCellWidget(row, 3, st_combo)
+
+        # Col 4: Pausa
+        pause_item = QTableWidgetItem(f"{pause:.1f}")
+        pause_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.table_cunas.setItem(row, 4, pause_item)
+
+    def remove_selected_cuna(self):
+        row = self.table_cunas.currentRow()
+        if 0 <= row < self.table_cunas.rowCount():
+            self.table_cunas.removeRow(row)
+
+    def preview_selected_cuna(self):
+        row = self.table_cunas.currentRow()
+        if row < 0 or row >= self.table_cunas.rowCount():
+            row = 0
+            if self.table_cunas.rowCount() == 0:
+                return
+
+        txt_item = self.table_cunas.item(row, 0)
+        text = txt_item.text().strip() if txt_item else ""
         if not text:
+            return
+
+        v_combo = self.table_cunas.cellWidget(row, 2)
+        voice_key = v_combo.currentData() if v_combo else self.voice_combo.currentData()
+
+        st_combo = self.table_cunas.cellWidget(row, 3)
+        style = st_combo.currentData() if st_combo else "locutor_radio"
+
+        try:
+            import sounddevice as sd
+            sd.stop()
+            engine = PiperTtsEngine(voice_key=voice_key)
+            formatted_text = f"[{style}]{text}[/{style}]"
+            samples = engine.synthesize(formatted_text)
+            sd.play(samples, engine.sample_rate)
+        except Exception as e:
+            QMessageBox.warning(self, "Error al escuchar cuña", f"No se pudo sintetizar:\n{e}")
+
+    def populate_voice_pool_table(self):
+        self.voice_pool_table.setRowCount(0)
+        for row, (key, profile) in enumerate(self.voices_dict.items()):
+            self.voice_pool_table.insertRow(row)
+
+            # Col 0: Checkbox
+            chk = QCheckBox()
+            # Por defecto activar todas las voces Kokoro Neural y un par de Piper
+            if profile.engine == "kokoro" or key in ("es_ES-sharvard-medium", "es_MX-claude-high"):
+                chk.setChecked(True)
+            chk_widget = QWidget()
+            chk_lay = QHBoxLayout(chk_widget)
+            chk_lay.addWidget(chk)
+            chk_lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            chk_lay.setContentsMargins(0, 0, 0, 0)
+            self.voice_pool_table.setCellWidget(row, 0, chk_widget)
+
+            # Col 1: Nombre de la voz
+            name_item = QTableWidgetItem(profile.name)
+            name_item.setData(Qt.ItemDataRole.UserRole, key)
+            self.voice_pool_table.setItem(row, 1, name_item)
+
+            # Col 2: Perfil / Motor
+            engine_str = "Kokoro (24kHz Studio)" if profile.engine == "kokoro" else f"Piper ({profile.sample_rate // 1000}kHz)"
+            gender_str = f" • {profile.gender.capitalize()}" if profile.gender else ""
+            desc_item = QTableWidgetItem(f"{engine_str}{gender_str}")
+            self.voice_pool_table.setItem(row, 2, desc_item)
+
+    def set_pool_selection(self, mode: str):
+        for r in range(self.voice_pool_table.rowCount()):
+            w = self.voice_pool_table.cellWidget(r, 0)
+            if not w:
+                continue
+            chk = w.findChild(QCheckBox)
+            if not chk:
+                continue
+            name_item = self.voice_pool_table.item(r, 1)
+            v_key = name_item.data(Qt.ItemDataRole.UserRole) if name_item else ""
+            prof = self.voices_dict.get(v_key)
+
+            if mode == "all":
+                chk.setChecked(True)
+            elif mode == "none":
+                chk.setChecked(False)
+            elif mode == "kokoro":
+                chk.setChecked(prof is not None and prof.engine == "kokoro")
+
+    def get_selected_voice_pool(self) -> list[str]:
+        selected = []
+        for r in range(self.voice_pool_table.rowCount()):
+            w = self.voice_pool_table.cellWidget(r, 0)
+            if not w:
+                continue
+            chk = w.findChild(QCheckBox)
+            if chk and chk.isChecked():
+                name_item = self.voice_pool_table.item(r, 1)
+                v_key = name_item.data(Qt.ItemDataRole.UserRole) if name_item else None
+                if v_key:
+                    selected.append(v_key)
+        return selected
+
+    def test_selected_pool_voice(self):
+        row = self.voice_pool_table.currentRow()
+        if row < 0 or row >= self.voice_pool_table.rowCount():
+            row = 0
+            if self.voice_pool_table.rowCount() == 0:
+                return
+
+        name_item = self.voice_pool_table.item(row, 1)
+        voice_key = name_item.data(Qt.ItemDataRole.UserRole) if name_item else None
+        if not voice_key:
             return
 
         try:
             import sounddevice as sd
-            engine = PiperTtsEngine(voice_key=voice)
-            samples = engine.synthesize(text)
+            sd.stop()
+            engine = PiperTtsEngine(voice_key=voice_key)
+            test_phrase = f"Hola, soy la voz {engine.available_voices[voice_key].name} lista para el casting dramático."
+            samples = engine.synthesize(test_phrase)
             sd.play(samples, engine.sample_rate)
         except Exception as e:
-            QMessageBox.warning(self, "Error al escuchar cuña", f"No se pudo sintetizar:\n{e}")
+            QMessageBox.warning(self, "Error al probar voz", f"No se pudo sintetizar la muestra:\n{e}")
 
     def start_batch_processing(self):
         if not self.batch_files:
@@ -648,19 +867,49 @@ class MainWindow(QDialog):
             QMessageBox.warning(self, "Sin formato", "Selecciona al menos un formato de salida.")
             return
 
-        configs: list[JobConfig] = []
-        for item in self.batch_files:
-            # Cuñas configuradas
-            interstitials = []
-            if self.chk_interstitial.isChecked() and self.interstitial_text.text().strip():
+        # Cuñas configuradas en la tabla
+        interstitials = []
+        if self.chk_interstitial.isChecked():
+            for r in range(self.table_cunas.rowCount()):
+                txt_item = self.table_cunas.item(r, 0)
+                txt = txt_item.text().strip() if txt_item else ""
+                if not txt:
+                    continue
+
+                pos_combo = self.table_cunas.cellWidget(r, 1)
+                pos = pos_combo.currentData() if pos_combo else "between_chapters"
+
+                v_combo = self.table_cunas.cellWidget(r, 2)
+                v_key = v_combo.currentData() if v_combo else self.voice_combo.currentData()
+
+                st_combo = self.table_cunas.cellWidget(r, 3)
+                st = st_combo.currentData() if st_combo else "locutor_radio"
+
+                pause_item = self.table_cunas.item(r, 4)
+                try:
+                    p_val = float(pause_item.text().strip()) if pause_item else 1.0
+                except ValueError:
+                    p_val = 1.0
+
                 interstitials.append(
                     InterstitialItem(
-                        text=self.interstitial_text.text().strip(),
-                        voice_key=self.interstitial_voice.currentData(),
-                        position="between_chapters"
+                        text=txt,
+                        voice_key=v_key,
+                        position=pos,
+                        style=st,
+                        pause_after=p_val,
                     )
                 )
 
+        # Pool de voces para auto-casting multi-voz
+        selected_pool = self.get_selected_voice_pool() if self.chk_autocast.isChecked() else []
+        if not selected_pool and self.chk_autocast.isChecked():
+            selected_pool = [k for k in self.voices_dict.keys() if k != self.voice_combo.currentData()][:4]
+
+        sec_voice = selected_pool[0] if selected_pool else None
+
+        configs: list[JobConfig] = []
+        for item in self.batch_files:
             # Narración IA
             narration_cfg = NarrationConfig(
                 enabled=self.chk_ai_narration.isChecked(),
@@ -673,7 +922,8 @@ class MainWindow(QDialog):
             cfg = JobConfig(
                 source_file=item["path"],
                 voice_key=self.voice_combo.currentData(),
-                secondary_voice_key=self.sec_voice_combo.currentData() if self.chk_autocast.isChecked() else None,
+                secondary_voice_key=sec_voice,
+                voice_pool=selected_pool,
                 multi_voice_mode="dialogue_auto" if self.chk_autocast.isChecked() else "single",
                 cover_image_path=self.cover_edit.text().strip() or None,
                 generate_audio=self.chk_mp3.isChecked(),
