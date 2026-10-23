@@ -131,28 +131,101 @@ class LibraryTab(QWidget):
         self.detail_panel.setObjectName("cardFrame")
         detail_layout = QVBoxLayout(self.detail_panel)
         detail_layout.setSpacing(10)
-        detail_layout.setContentsMargins(14, 14, 14, 14)
+        detail_layout.setContentsMargins(12, 12, 12, 12)
 
-        # Título y metadatos
+        # 1. Cabecera Ejecutiva: Portada Grande (izquierda) + Selección y Metadatos (derecha)
+        self.header_card = QFrame()
+        self.header_card.setObjectName("metricCard")
+        header_card_lay = QHBoxLayout(self.header_card)
+        header_card_lay.setContentsMargins(10, 10, 10, 10)
+        header_card_lay.setSpacing(14)
+
+        # Portada a la izquierda (Dimensiones ampliadas 280x280)
+        self.cover_label = QLabel("[ Sin Portada ]\n\n1:1 Master Art")
+        self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.cover_label.setFixedSize(280, 280)
+        self.cover_label.setStyleSheet("""
+            QLabel {
+                background-color: #070a10;
+                border: 1px solid #1e2633;
+                border-radius: 8px;
+                color: #64748b;
+                font-family: Consolas, monospace;
+                font-size: 12px;
+                font-weight: 600;
+                line-height: 1.5;
+            }
+        """)
+        header_card_lay.addWidget(self.cover_label)
+
+        # Panel de Selección, Título y Metadatos Técnicos a la derecha
+        self.meta_panel = QWidget()
+        meta_panel_lay = QVBoxLayout(self.meta_panel)
+        meta_panel_lay.setContentsMargins(0, 0, 0, 0)
+        meta_panel_lay.setSpacing(6)
+
         self.lbl_book_title = QLabel("Selecciona un elemento para reproducir")
         self.lbl_book_title.setObjectName("titleLabel")
         self.lbl_book_title.setWordWrap(True)
-        detail_layout.addWidget(self.lbl_book_title)
+        self.lbl_book_title.setStyleSheet("font-size: 17px; font-weight: 700; color: #f8fafc;")
+        meta_panel_lay.addWidget(self.lbl_book_title)
 
         self.lbl_book_meta = QLabel("Metadatos técnicos: Selecciona un audiolibro o lectura rápida.")
         self.lbl_book_meta.setObjectName("subtitleLabel")
         self.lbl_book_meta.setWordWrap(True)
-        detail_layout.addWidget(self.lbl_book_meta)
+        self.lbl_book_meta.setStyleSheet("color: #94a3b8; font-size: 11px; line-height: 1.4;")
+        meta_panel_lay.addWidget(self.lbl_book_meta)
 
-        # Vista central: Portada para audiolibros, o Caja de texto para lecturas rápidas
-        self.cover_label = QLabel("[ Sin Portada ]")
-        self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.cover_label.setFixedSize(170, 170)
-        self.cover_label.setStyleSheet(
-            "background-color: #0b0f16; border: 1px solid #1e2633; border-radius: 6px; color: #475569;"
+        # Fila de Badges Técnicos Industriales
+        self.badges_widget = QWidget()
+        badges_lay = QHBoxLayout(self.badges_widget)
+        badges_lay.setContentsMargins(0, 2, 0, 2)
+        badges_lay.setSpacing(6)
+
+        self.badge_ebu = QLabel("EBU R128 (-16 LUFS)")
+        self.badge_ebu.setStyleSheet("background-color: #0c1523; border: 1px solid #1e3a5f; color: #38bdf8; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: Consolas, monospace;")
+        self.badge_mp3 = QLabel("MP3 256K")
+        self.badge_mp3.setStyleSheet("background-color: #0c1523; border: 1px solid #1e3a5f; color: #22c55e; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: Consolas, monospace;")
+        self.badge_flac = QLabel("FLAC 24-BIT")
+        self.badge_flac.setStyleSheet("background-color: #0c1523; border: 1px solid #1e3a5f; color: #a855f7; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: Consolas, monospace;")
+        self.badge_mp4 = QLabel("KARAOKE MP4")
+        self.badge_mp4.setStyleSheet("background-color: #0c1523; border: 1px solid #1e3a5f; color: #f59e0b; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: Consolas, monospace;")
+        self.badge_engine = QLabel("KOKORO & PIPER")
+        self.badge_engine.setStyleSheet("background-color: #0c1523; border: 1px solid #1e3a5f; color: #60a5fa; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: Consolas, monospace;")
+
+        badges_lay.addWidget(self.badge_ebu)
+        badges_lay.addWidget(self.badge_mp3)
+        badges_lay.addWidget(self.badge_flac)
+        badges_lay.addWidget(self.badge_mp4)
+        badges_lay.addWidget(self.badge_engine)
+        badges_lay.addStretch()
+        meta_panel_lay.addWidget(self.badges_widget)
+
+        # Ficha técnica de especificaciones del máster multimedia
+        self.spec_card = QFrame()
+        self.spec_card.setObjectName("metricCard")
+        self.spec_card.setStyleSheet("background-color: #070b12; border: 1px solid #151d2a; border-radius: 6px; padding: 4px;")
+        spec_lay = QVBoxLayout(self.spec_card)
+        spec_lay.setContentsMargins(8, 6, 8, 6)
+        spec_lay.setSpacing(3)
+        lbl_spec_title = QLabel("ESPECIFICACIONES DEL MÁSTER MULTIMEDIA")
+        lbl_spec_title.setObjectName("metricTitle")
+        self.lbl_spec_details = QLabel(
+            "• Estándar de Transmisión: EBU R128 (-16 LUFS Normalizado)\n"
+            "• Formatos Generados: MP3 256kbps + Master FLAC 24-bit sin pérdida\n"
+            "• Video Karaoke: MP4 (H.264 / AAC) con subtítulos sincronizados\n"
+            "• Motor de Síntesis: Kokoro Studio Neural 24kHz & Piper DirectML"
         )
-        detail_layout.addWidget(self.cover_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.lbl_spec_details.setStyleSheet("color: #8b949e; font-size: 11px; line-height: 1.35;")
+        spec_lay.addWidget(lbl_spec_title)
+        spec_lay.addWidget(self.lbl_spec_details)
+        meta_panel_lay.addWidget(self.spec_card)
 
+        meta_panel_lay.addStretch()
+        header_card_lay.addWidget(self.meta_panel, stretch=1)
+        detail_layout.addWidget(self.header_card)
+
+        # Vista de texto para lecturas rápidas
         self.text_preview = QTextEdit()
         self.text_preview.setReadOnly(True)
         self.text_preview.setPlaceholderText("Texto íntegro de la lectura rápida...")
@@ -171,25 +244,6 @@ class LibraryTab(QWidget):
         """)
         self.text_preview.setVisible(False)
         detail_layout.addWidget(self.text_preview, stretch=1)
-
-        # Ficha técnica de especificaciones del máster (visible en modo libro)
-        self.spec_card = QFrame()
-        self.spec_card.setObjectName("metricCard")
-        spec_lay = QVBoxLayout(self.spec_card)
-        spec_lay.setContentsMargins(10, 8, 10, 8)
-        spec_lay.setSpacing(4)
-        lbl_spec_title = QLabel("Especificaciones del Máster Multimedia")
-        lbl_spec_title.setObjectName("metricTitle")
-        self.lbl_spec_details = QLabel(
-            "• Estándar de Transmisión: EBU R128 (-16 LUFS Normalizado)\n"
-            "• Formatos Generados: MP3 256kbps + Master FLAC 24-bit sin pérdida\n"
-            "• Video Karaoke: MP4 (H.264 / AAC) con subtítulos sincronizados\n"
-            "• Motor de Síntesis: Kokoro Studio Neural 24kHz & Piper DirectML"
-        )
-        self.lbl_spec_details.setStyleSheet("color: #94a3b8; font-size: 11px; line-height: 1.4;")
-        spec_lay.addWidget(lbl_spec_title)
-        spec_lay.addWidget(self.lbl_spec_details)
-        detail_layout.addWidget(self.spec_card)
 
         # Caja de Reproducción Multimedia
         player_box = QFrame()
@@ -251,6 +305,10 @@ class LibraryTab(QWidget):
         self.btn_open_folder.setObjectName("secondaryActionButton")
         self.btn_open_folder.clicked.connect(self.open_current_folder)
 
+        self.btn_change_cover = QPushButton("[ 🖼 ] Asignar Portada")
+        self.btn_change_cover.setObjectName("secondaryActionButton")
+        self.btn_change_cover.clicked.connect(self.change_cover_dialog)
+
         self.btn_load_to_reader = QPushButton("[ ↗ ] Cargar en Lector Rápido")
         self.btn_load_to_reader.setObjectName("actionButton")
         self.btn_load_to_reader.clicked.connect(self.load_selected_to_reader)
@@ -263,6 +321,7 @@ class LibraryTab(QWidget):
 
         actions_grid.addWidget(self.btn_open_video)
         actions_grid.addWidget(self.btn_open_folder)
+        actions_grid.addWidget(self.btn_change_cover)
         actions_grid.addWidget(self.btn_load_to_reader)
         actions_grid.addWidget(self.btn_delete_history)
         detail_layout.addLayout(actions_grid)
@@ -404,8 +463,12 @@ class LibraryTab(QWidget):
 
         # Cambiar modo visual a libro
         self.cover_label.setVisible(True)
-        self.text_preview.setVisible(False)
         self.spec_card.setVisible(True)
+        if hasattr(self, 'badges_widget'):
+            self.badges_widget.setVisible(True)
+        if hasattr(self, 'btn_change_cover'):
+            self.btn_change_cover.setVisible(True)
+        self.text_preview.setVisible(False)
         self.btn_open_video.setVisible(True)
         self.dist_group.setVisible(True)
         self.btn_load_to_reader.setVisible(False)
@@ -423,13 +486,19 @@ class LibraryTab(QWidget):
         )
         self.lbl_book_meta.setText(meta_text)
 
+        # Actualizar visibilidad de badges según formatos
+        if hasattr(self, 'badge_mp3'):
+            self.badge_mp3.setVisible(bool(book_data.get("mp3") and book_data["mp3"].exists()))
+            self.badge_flac.setVisible(bool(book_data.get("master") and book_data["master"].exists()))
+            self.badge_mp4.setVisible(bool(book_data.get("mp4") and book_data["mp4"].exists()))
+
         if book_data["cover"] and book_data["cover"].exists():
             pix = QPixmap(str(book_data["cover"])).scaled(
-                170, 170, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                280, 280, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
             )
             self.cover_label.setPixmap(pix)
         else:
-            self.cover_label.setText("[ Sin Portada ]")
+            self.cover_label.setText("[ Sin Portada ]\n\n1:1 Master Art")
 
         if book_data["mp3"] and book_data["mp3"].exists():
             self.player.setSource(QUrl.fromLocalFile(str(book_data["mp3"])))
@@ -458,8 +527,12 @@ class LibraryTab(QWidget):
 
         # Cambiar modo visual a lectura rápida
         self.cover_label.setVisible(False)
-        self.text_preview.setVisible(True)
         self.spec_card.setVisible(False)
+        if hasattr(self, 'badges_widget'):
+            self.badges_widget.setVisible(False)
+        if hasattr(self, 'btn_change_cover'):
+            self.btn_change_cover.setVisible(False)
+        self.text_preview.setVisible(True)
         self.text_preview.setPlainText(h_data.get("text", ""))
         self.btn_open_video.setVisible(False)
         self.dist_group.setVisible(False)
@@ -481,6 +554,38 @@ class LibraryTab(QWidget):
             self.btn_play.setEnabled(True)
         else:
             self.btn_play.setEnabled(False)
+
+    def change_cover_dialog(self):
+        """Permite asignar o actualizar la portada de un audiolibro existente."""
+        if not self.selected_book_data:
+            QMessageBox.information(self, "Asignar Portada", "Por favor selecciona primero un audiolibro del catálogo.")
+            return
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Seleccionar Imagen de Portada (1:1 Recomendado)",
+            "",
+            "Imágenes (*.png *.jpg *.jpeg *.webp)"
+        )
+        if file_path:
+            import shutil
+            p = Path(file_path)
+            book_folder = self.selected_book_data["folder"]
+            dest = book_folder / f"cover{p.suffix.lower()}"
+            try:
+                shutil.copy2(p, dest)
+                self.selected_book_data["cover"] = dest
+                pix = QPixmap(str(dest)).scaled(
+                    280, 280, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                )
+                self.cover_label.setPixmap(pix)
+                QMessageBox.information(
+                    self,
+                    "Portada Actualizada",
+                    f"La portada de '{self.selected_book_data['title']}' se actualizó correctamente."
+                )
+            except Exception as e:
+                QMessageBox.critical(self, "Error al Guardar Portada", f"No se pudo copiar la imagen:\n{e}")
 
     def toggle_play(self):
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
