@@ -146,13 +146,16 @@ class MainWindow(QDialog):
         )
         self.setWindowTitle("GlobalTTS — Sistema Integral de Audiolibros, Video Karaoke & Lectura en Vivo")
         
-        # Modo Kiosko 16:9 ajustado a la pantalla disponible (preservando barra de tareas de Windows)
+        # Adaptabilidad total a la pantalla disponible (Vertical o Horizontal, respetando barra de tareas)
         screen = QApplication.primaryScreen()
         if screen:
             avail = screen.availableGeometry()
             self.setGeometry(avail)
-        self.setMinimumSize(1024, 680)
+        self.setMinimumSize(780, 500)
         self.setStyleSheet(DARK_THEME_QSS)
+
+        self.orientation_mode: str = "auto"  # "auto", "vertical", "horizontal"
+        self.current_applied_orientation: str = ""
 
         self.batch_files: list[dict] = []
         self.worker: Optional[BatchPipelineWorker] = None
@@ -169,6 +172,7 @@ class MainWindow(QDialog):
         self.voices_dict = list_available_piper_voices()
 
         self.init_ui()
+        self.apply_orientation(force=True)
 
         if initial_file:
             self.add_file_to_batch(initial_file)
@@ -191,6 +195,12 @@ class MainWindow(QDialog):
         top_bar.addLayout(title_group)
 
         top_bar.addStretch()
+
+        self.btn_orientation = QPushButton("[ ↕ ] Modo: Auto (Vertical)")
+        self.btn_orientation.setObjectName("secondaryActionButton")
+        self.btn_orientation.setToolTip("Alterna la distribución de la app entre Vertical (Monitores Retrato) y Horizontal (Panorámico)")
+        self.btn_orientation.clicked.connect(self.cycle_orientation)
+        top_bar.addWidget(self.btn_orientation)
 
         self.btn_minimize = QPushButton("[ _ ] Minimizar a Bandeja")
         self.btn_minimize.setObjectName("actionButton")
@@ -267,25 +277,70 @@ class MainWindow(QDialog):
             f"Carpeta de entrega: {folder}"
         )
 
+    def get_effective_orientation(self) -> str:
+        if self.orientation_mode != "auto":
+            return self.orientation_mode
+        # Detectar monitor o ventana vertical si la altura es mayor que el ancho o ancho <= 1250px
+        return "vertical" if self.height() >= self.width() or self.width() <= 1250 else "horizontal"
+
+    def cycle_orientation(self):
+        if self.orientation_mode == "auto":
+            self.orientation_mode = "vertical"
+        elif self.orientation_mode == "vertical":
+            self.orientation_mode = "horizontal"
+        else:
+            self.orientation_mode = "auto"
+        self.apply_orientation(force=True)
+
+    def apply_orientation(self, target_orientation: Optional[str] = None, force: bool = False):
+        if target_orientation and target_orientation in ("vertical", "horizontal"):
+            eff = target_orientation
+        else:
+            eff = self.get_effective_orientation()
+        if not force and eff == self.current_applied_orientation:
+            return
+        self.current_applied_orientation = eff
+
+        if self.orientation_mode == "auto":
+            self.btn_orientation.setText(f"[ ↕ ] Modo: Auto ({eff.capitalize()})")
+        elif self.orientation_mode == "vertical":
+            self.btn_orientation.setText("[ ↕ ] Modo: Vertical Forzado")
+        else:
+            self.btn_orientation.setText("[ ↔ ] Modo: Horizontal Forzado")
+
+        # 1. Actualizar pestaña del generador de libros
+        self.update_generator_tab_layout(eff)
+
+        # 2. Actualizar pestaña de lectura rápida
+        if hasattr(self, 'tab_quick') and hasattr(self.tab_quick, 'set_orientation'):
+            self.tab_quick.set_orientation(eff)
+
+        # 3. Actualizar pestaña de biblioteca
+        if hasattr(self, 'tab_library') and hasattr(self.tab_library, 'set_orientation'):
+            self.tab_library.set_orientation(eff)
+
+        # 4. Actualizar pestaña de prompts
+        if hasattr(self, 'tab_prompts') and hasattr(self.tab_prompts, 'set_orientation'):
+            self.tab_prompts.set_orientation(eff)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, 'orientation_mode') and self.orientation_mode == "auto":
+            new_eff = self.get_effective_orientation()
+            if new_eff != self.current_applied_orientation:
+                self.apply_orientation()
+
     def init_generator_tab(self):
-        gen_layout = QVBoxLayout(self.tab_generator)
-        gen_layout.setContentsMargins(10, 10, 10, 10)
-        gen_layout.setSpacing(8)
-
-        # Disposición en 2 Columnas responsivas sin ScrollArea para aprovechar la pantalla en 16:9
-        cols_lay = QHBoxLayout()
-        cols_lay.setSpacing(10)
+        self.gen_layout = QVBoxLayout(self.tab_generator)
+        self.gen_layout.setContentsMargins(10, 8, 10, 8)
+        self.gen_layout.setSpacing(6)
 
         # =========================================================================
-        # COLUMNA IZQUIERDA: ARCHIVOS EN LOTE, PORTADA Y CUÑAS (50% espacio)
+        # SECCIÓN 1: ARCHIVOS EN LOTE (batch_group)
         # =========================================================================
-        left_col = QVBoxLayout()
-        left_col.setSpacing(8)
-
-        # 1. Tabla de Archivos en Lote
-        batch_group = QGroupBox("Archivos a Procesar (Procesamiento en Lote 1 por 1)")
-        batch_lay = QVBoxLayout(batch_group)
-        batch_lay.setContentsMargins(10, 10, 10, 10)
+        self.batch_group = QGroupBox("Archivos a Procesar (Procesamiento en Lote 1 por 1)")
+        batch_lay = QVBoxLayout(self.batch_group)
+        batch_lay.setContentsMargins(10, 8, 10, 8)
         batch_lay.setSpacing(6)
 
         btn_row = QHBoxLayout()
@@ -310,15 +365,15 @@ class MainWindow(QDialog):
         self.batch_table.setColumnCount(3)
         self.batch_table.setHorizontalHeaderLabels(["Archivo de Origen", "Voz Asignada", "Estado"])
         self.batch_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.batch_table.setMaximumHeight(150)
         self.batch_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.batch_table.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 4px; background: transparent; }")
         batch_lay.addWidget(self.batch_table)
-        left_col.addWidget(batch_group)
 
-        # 2. Portada y Cuñas Intersticiales (Radio / Jingles / Separadores)
-        extra_group = QGroupBox("Portada y Cuñas Intersticiales")
-        extra_lay = QVBoxLayout(extra_group)
+        # =========================================================================
+        # SECCIÓN 2: PORTADA Y CUÑAS INTERSTICIALES (extra_group)
+        # =========================================================================
+        self.extra_group = QGroupBox("Portada y Cuñas Intersticiales (Radio / Jingles / Separadores)")
+        extra_lay = QVBoxLayout(self.extra_group)
         extra_lay.setContentsMargins(10, 8, 10, 8)
         extra_lay.setSpacing(6)
 
@@ -365,11 +420,10 @@ class MainWindow(QDialog):
         self.table_cunas.setColumnCount(5)
         self.table_cunas.setHorizontalHeaderLabels(["Texto Cuña", "Posición", "Voz", "Estilo", "Pausa"])
         self.table_cunas.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.table_cunas.setColumnWidth(1, 130)
-        self.table_cunas.setColumnWidth(2, 175)
-        self.table_cunas.setColumnWidth(3, 140)
-        self.table_cunas.setColumnWidth(4, 55)
-        self.table_cunas.setMaximumHeight(115)
+        self.table_cunas.setColumnWidth(1, 140)
+        self.table_cunas.setColumnWidth(2, 210)
+        self.table_cunas.setColumnWidth(3, 160)
+        self.table_cunas.setColumnWidth(4, 60)
         self.table_cunas.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table_cunas.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 4px; background: transparent; }")
         cuna_lay.addWidget(self.table_cunas)
@@ -386,19 +440,11 @@ class MainWindow(QDialog):
             pause=1.0,
         )
 
-        left_col.addWidget(extra_group)
-        left_col.addStretch()
-        cols_lay.addLayout(left_col, stretch=50)
-
         # =========================================================================
-        # COLUMNA DERECHA: VOCES, NARRACIÓN IA Y FORMATOS (50% espacio)
+        # SECCIÓN 3: VOCES Y AUTO-CASTING MULTI-VOZ (voice_group)
         # =========================================================================
-        right_col = QVBoxLayout()
-        right_col.setSpacing(8)
-
-        # 3. Configuración de Voz y Auto-Casting Multi-Voz
-        voice_group = QGroupBox("Voces y Auto-Casting Multi-Voz (15 Voces Neurales)")
-        voice_lay = QVBoxLayout(voice_group)
+        self.voice_group = QGroupBox("Voces y Auto-Casting Multi-Voz (15 Voces Neurales)")
+        voice_lay = QVBoxLayout(self.voice_group)
         voice_lay.setContentsMargins(10, 8, 10, 8)
         voice_lay.setSpacing(6)
 
@@ -453,21 +499,21 @@ class MainWindow(QDialog):
         self.voice_pool_table.setHorizontalHeaderLabels(["Casting", "Voz Neural", "Calidad / Perfil"])
         self.voice_pool_table.setColumnWidth(0, 60)
         self.voice_pool_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.voice_pool_table.setColumnWidth(2, 170)
-        self.voice_pool_table.setMaximumHeight(115)
+        self.voice_pool_table.setColumnWidth(2, 200)
         self.voice_pool_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.voice_pool_table.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 4px; background: transparent; }")
         pool_inner.addWidget(self.voice_pool_table)
         voice_lay.addWidget(self.pool_frame)
 
         self.populate_voice_pool_table()
-        right_col.addWidget(voice_group)
 
-        # 4. Modo Narración / Análisis con Mistral NeMo Local
-        ai_group = QGroupBox("Expresividad y Modo Narración (Mistral NeMo Local)")
-        ai_lay = QVBoxLayout(ai_group)
-        ai_lay.setContentsMargins(10, 10, 10, 10)
-        ai_lay.setSpacing(6)
+        # =========================================================================
+        # SECCIÓN 4: MODO NARRACIÓN / ANÁLISIS CON IA (ai_group)
+        # =========================================================================
+        self.ai_group = QGroupBox("Expresividad y Modo Narración (Mistral NeMo Local)")
+        ai_lay = QVBoxLayout(self.ai_group)
+        ai_lay.setContentsMargins(10, 8, 10, 8)
+        ai_lay.setSpacing(5)
 
         self.chk_ai_narration = QCheckBox("Activar análisis con IA (Mistral NeMo 12B local)")
         self.chk_ai_narration.toggled.connect(self.toggle_ai_options)
@@ -476,7 +522,7 @@ class MainWindow(QDialog):
         self.ai_options_frame = QFrame()
         ai_opt_lay = QFormLayout(self.ai_options_frame)
         ai_opt_lay.setContentsMargins(0, 0, 0, 0)
-        ai_opt_lay.setSpacing(6)
+        ai_opt_lay.setSpacing(5)
 
         self.combo_ai_mode = QComboBox()
         self.combo_ai_mode.addItem("Enriquecer expresividad ([pausa], [lento], [énfasis])", "enhance")
@@ -518,12 +564,13 @@ class MainWindow(QDialog):
 
         self.ai_options_frame.setEnabled(False)
         ai_lay.addWidget(self.ai_options_frame)
-        right_col.addWidget(ai_group)
 
-        # 5. Formatos de Salida
-        out_group = QGroupBox("Formatos a Generar")
-        out_lay = QHBoxLayout(out_group)
-        out_lay.setContentsMargins(10, 8, 10, 8)
+        # =========================================================================
+        # SECCIÓN 5: FORMATOS DE SALIDA (out_group)
+        # =========================================================================
+        self.out_group = QGroupBox("Formatos a Generar")
+        out_lay = QHBoxLayout(self.out_group)
+        out_lay.setContentsMargins(10, 6, 10, 6)
         self.chk_mp3 = QCheckBox("Audio MP3 (256k EBU R128)")
         self.chk_mp3.setChecked(True)
         self.chk_video = QCheckBox("Video Karaoke (MP4 pantalla negra)")
@@ -533,17 +580,17 @@ class MainWindow(QDialog):
         out_lay.addWidget(self.chk_mp3)
         out_lay.addWidget(self.chk_video)
         out_lay.addWidget(self.chk_flac)
-        right_col.addWidget(out_group)
-        right_col.addStretch()
-
-        cols_lay.addLayout(right_col, stretch=50)
-        gen_layout.addLayout(cols_lay)
 
         # =========================================================================
-        # SECCIÓN INFERIOR: TELEMETRÍA, PROGRESO Y ACCIONES
+        # SECCIÓN 6: TELEMETRÍA, PROGRESO Y ACCIONES (bottom_control_box)
         # =========================================================================
+        self.bottom_control_box = QWidget()
+        bottom_box_lay = QVBoxLayout(self.bottom_control_box)
+        bottom_box_lay.setContentsMargins(0, 0, 0, 0)
+        bottom_box_lay.setSpacing(6)
+
         metrics_layout = QHBoxLayout()
-        metrics_layout.setSpacing(10)
+        metrics_layout.setSpacing(8)
 
         card_elapsed = QFrame()
         card_elapsed.setObjectName("metricCard")
@@ -578,7 +625,7 @@ class MainWindow(QDialog):
         lay_speed.addWidget(self.val_speed)
         metrics_layout.addWidget(card_speed)
 
-        gen_layout.addLayout(metrics_layout)
+        bottom_box_lay.addLayout(metrics_layout)
 
         # Barra de progreso y Fase
         prog_row = QHBoxLayout()
@@ -589,12 +636,12 @@ class MainWindow(QDialog):
         prog_row.addWidget(self.lbl_stage)
         prog_row.addStretch()
         prog_row.addWidget(self.lbl_active_utt)
-        gen_layout.addLayout(prog_row)
+        bottom_box_lay.addLayout(prog_row)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        gen_layout.addWidget(self.progress_bar)
+        bottom_box_lay.addWidget(self.progress_bar)
 
         # Panel de Resultados
         self.res_card = QFrame()
@@ -627,13 +674,82 @@ class MainWindow(QDialog):
         res_btns.addWidget(self.btn_upload_yt)
         res_btns.addWidget(self.btn_upload_sp)
         res_lay.addLayout(res_btns)
-        gen_layout.addWidget(self.res_card)
+        bottom_box_lay.addWidget(self.res_card)
 
         # Botón de Inicio
         self.start_btn = QPushButton("[ ► ] Iniciar Generación en Lote")
         self.start_btn.setObjectName("primaryButton")
         self.start_btn.clicked.connect(self.start_batch_processing)
-        gen_layout.addWidget(self.start_btn)
+        bottom_box_lay.addWidget(self.start_btn)
+
+        # Aplicar distribución inicial
+        self.update_generator_tab_layout(self.get_effective_orientation())
+
+    def update_generator_tab_layout(self, mode: str):
+        """Ajusta la distribución del Generador manteniendo el orden exacto de secciones sin scroll."""
+        def clear_layout_items(lay):
+            while lay.count():
+                item = lay.takeAt(0)
+                w = item.widget()
+                if w:
+                    w.setParent(None)
+                elif item.layout():
+                    clear_layout_items(item.layout())
+
+        clear_layout_items(self.gen_layout)
+
+        if mode == "vertical":
+            # Modo Vertical: Orden secuencial 1 -> 2 -> 3 -> 4 -> 5 -> 6 ocupando todo el ancho y alto
+            self.gen_layout.setContentsMargins(10, 6, 10, 6)
+            self.gen_layout.setSpacing(6)
+
+            # Tablas fluidas para aprovechar los 1872px de altura
+            self.batch_table.setMinimumHeight(130)
+            self.batch_table.setMaximumHeight(16777215)
+            self.table_cunas.setMinimumHeight(115)
+            self.table_cunas.setMaximumHeight(16777215)
+            self.voice_pool_table.setMinimumHeight(125)
+            self.voice_pool_table.setMaximumHeight(16777215)
+
+            self.gen_layout.addWidget(self.batch_group, stretch=3)
+            self.gen_layout.addWidget(self.extra_group, stretch=3)
+            self.gen_layout.addWidget(self.voice_group, stretch=3)
+            self.gen_layout.addWidget(self.ai_group, stretch=0)
+            self.gen_layout.addWidget(self.out_group, stretch=0)
+            self.gen_layout.addWidget(self.bottom_control_box, stretch=0)
+        else:
+            # Modo Horizontal: 2 columnas balanceadas para monitores panorámicos
+            self.gen_layout.setContentsMargins(10, 10, 10, 10)
+            self.gen_layout.setSpacing(8)
+
+            # Alturas compactas para que quepa en 1080p horizontal sin scrollbar
+            self.batch_table.setMinimumHeight(90)
+            self.batch_table.setMaximumHeight(140)
+            self.table_cunas.setMinimumHeight(90)
+            self.table_cunas.setMaximumHeight(115)
+            self.voice_pool_table.setMinimumHeight(90)
+            self.voice_pool_table.setMaximumHeight(115)
+
+            cols_lay = QHBoxLayout()
+            cols_lay.setSpacing(10)
+
+            left_col = QVBoxLayout()
+            left_col.setSpacing(8)
+            left_col.addWidget(self.batch_group)
+            left_col.addWidget(self.extra_group)
+            left_col.addStretch()
+            cols_lay.addLayout(left_col, stretch=50)
+
+            right_col = QVBoxLayout()
+            right_col.setSpacing(8)
+            right_col.addWidget(self.voice_group)
+            right_col.addWidget(self.ai_group)
+            right_col.addWidget(self.out_group)
+            right_col.addStretch()
+            cols_lay.addLayout(right_col, stretch=50)
+
+            self.gen_layout.addLayout(cols_lay)
+            self.gen_layout.addWidget(self.bottom_control_box)
 
     def toggle_ai_options(self, checked: bool):
         self.ai_options_frame.setEnabled(checked)

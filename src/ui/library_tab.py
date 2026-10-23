@@ -95,7 +95,7 @@ class LibraryTab(QWidget):
         main_layout.addLayout(top_bar)
 
         # Splitter central: Catálogo / Historial (izq) y Reproductor Ejecutivo (der)
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # Sub-pestañas de la izquierda
         self.catalog_tabs = QTabWidget()
@@ -120,7 +120,7 @@ class LibraryTab(QWidget):
         self.history_table.itemSelectionChanged.connect(self.on_history_selected)
         self.catalog_tabs.addTab(self.history_table, "HISTORIAL DE LECTURAS RÁPIDAS")
 
-        splitter.addWidget(self.catalog_tabs)
+        self.splitter.addWidget(self.catalog_tabs)
 
         # 2. Panel de Detalles y Reproductor Multimedia Ejecutivo
         self.detail_panel = QFrame()
@@ -262,10 +262,23 @@ class LibraryTab(QWidget):
         detail_layout.addWidget(self.dist_group)
 
         detail_layout.addStretch()
-        splitter.addWidget(self.detail_panel)
-        splitter.setSizes([520, 440])
+        self.splitter.addWidget(self.detail_panel)
+        self.splitter.setSizes([520, 440])
 
-        main_layout.addWidget(splitter)
+        main_layout.addWidget(self.splitter)
+
+        self.current_orientation = 'vertical'
+        self.set_orientation('vertical')
+
+    def set_orientation(self, mode: str):
+        """Ajusta la orientación del reproductor y catálogo según la pantalla sin barras de scroll."""
+        self.current_orientation = mode
+        if mode == "vertical":
+            self.splitter.setOrientation(Qt.Orientation.Vertical)
+            self.splitter.setSizes([950, 600])
+        else:
+            self.splitter.setOrientation(Qt.Orientation.Horizontal)
+            self.splitter.setSizes([540, 420])
 
     def setup_player_events(self):
         self.player.positionChanged.connect(self.on_position_changed)

@@ -42,9 +42,13 @@ class PromptManagerWidget(QWidget):
 
         self._current_type: str = "mode"  # "mode" | "style" | "custom"
         self._current_id: str = ""
+        self.current_orientation: str = "vertical"
 
         self._init_ui()
         self._populate_selector()
+
+    def set_orientation(self, mode: str):
+        self.current_orientation = mode
 
     def _init_ui(self) -> None:
         layout = QVBoxLayout(self)

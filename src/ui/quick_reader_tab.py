@@ -196,23 +196,18 @@ class QuickReaderTab(QWidget):
         return default_cfg
 
     def init_ui(self):
-        # Usar diseño de 2 columnas para aprovechar toda la pantalla sin barras de desplazamiento
-        columns_layout = QHBoxLayout(self)
-        columns_layout.setContentsMargins(10, 10, 10, 10)
-        columns_layout.setSpacing(12)
+        self.main_container_layout = QVBoxLayout(self)
+        self.main_container_layout.setContentsMargins(10, 8, 10, 8)
+        self.main_container_layout.setSpacing(8)
 
         # =========================================================================
-        # COLUMNA IZQUIERDA: LECTOR RÁPIDO & EXPRESIVIDAD IA (55% espacio)
+        # SECCIÓN 1: LECTOR RÁPIDO EN TIEMPO REAL
         # =========================================================================
-        left_col = QVBoxLayout()
-        left_col.setSpacing(10)
-
-        # 1. Tarjeta de Lector Rápido
-        reader_box = QFrame()
-        reader_box.setObjectName("cardFrame")
-        r_lay = QVBoxLayout(reader_box)
-        r_lay.setContentsMargins(12, 12, 12, 12)
-        r_lay.setSpacing(8)
+        self.reader_box = QFrame()
+        self.reader_box.setObjectName("cardFrame")
+        r_lay = QVBoxLayout(self.reader_box)
+        r_lay.setContentsMargins(12, 10, 12, 10)
+        r_lay.setSpacing(6)
 
         # Cabecera
         header_row = QHBoxLayout()
@@ -220,7 +215,7 @@ class QuickReaderTab(QWidget):
         title_lbl.setObjectName("titleLabel")
         header_row.addWidget(title_lbl)
 
-        self.lbl_status = QLabel("[ ACTIVO ] Motor Piper TTS Local (DirectML)")
+        self.lbl_status = QLabel("[ ACTIVO ] Motor Kokoro & Piper TTS Local (DirectML)")
         self.lbl_status.setStyleSheet("color: #22c55e; font-weight: 700; font-size: 11px; font-family: Consolas, monospace;")
         header_row.addWidget(self.lbl_status, alignment=Qt.AlignmentFlag.AlignRight)
         r_lay.addLayout(header_row)
@@ -238,6 +233,7 @@ class QuickReaderTab(QWidget):
         self.text_edit.setObjectName("quickTextBox")
         self.text_edit.setPlaceholderText("Pega o escribe aquí cualquier texto para escucharlo o enriquecerlo con IA...")
         self.text_edit.textChanged.connect(self.on_text_changed)
+        self.text_edit.setMinimumHeight(180)
 
         # Ocultar visualmente la barra de desplazamiento manteniendo el scroll funcional
         self.text_edit.verticalScrollBar().setStyleSheet("""
@@ -293,13 +289,14 @@ class QuickReaderTab(QWidget):
         btns_row.addWidget(self.btn_save_mp3)
 
         r_lay.addLayout(btns_row)
-        left_col.addWidget(reader_box, stretch=3)
 
-        # 2. Tarjeta de Expresividad y Modo Narración (Mistral NeMo Local)
-        ai_box = QGroupBox("Expresividad y Modo Narración (Mistral NeMo 12B Local)")
-        ai_lay = QVBoxLayout(ai_box)
-        ai_lay.setContentsMargins(10, 10, 10, 10)
-        ai_lay.setSpacing(8)
+        # =========================================================================
+        # SECCIÓN 2: EXPRESIVIDAD Y MODO NARRACIÓN (Mistral NeMo Local)
+        # =========================================================================
+        self.ai_box = QGroupBox("Expresividad y Modo Narración (Mistral NeMo 12B Local)")
+        ai_lay = QVBoxLayout(self.ai_box)
+        ai_lay.setContentsMargins(10, 8, 10, 8)
+        ai_lay.setSpacing(6)
 
         self.chk_ai_enabled = QCheckBox("Activar Enriquecimiento / Modo Narración con IA")
         self.chk_ai_enabled.toggled.connect(self.toggle_ai_panel)
@@ -308,7 +305,7 @@ class QuickReaderTab(QWidget):
         self.ai_controls_frame = QFrame()
         ai_ctrl_lay = QVBoxLayout(self.ai_controls_frame)
         ai_ctrl_lay.setContentsMargins(0, 0, 0, 0)
-        ai_ctrl_lay.setSpacing(6)
+        ai_ctrl_lay.setSpacing(5)
 
         # Fila 1: Modo y Estilo
         row1 = QHBoxLayout()
@@ -354,20 +351,13 @@ class QuickReaderTab(QWidget):
         self.ai_controls_frame.setEnabled(False)
         ai_lay.addWidget(self.ai_controls_frame)
 
-        left_col.addWidget(ai_box, stretch=1)
-        columns_layout.addLayout(left_col, stretch=55)
-
         # =========================================================================
-        # COLUMNA DERECHA: SUITE DE CONFIGURACIÓN Y ATAJOS (45% espacio)
+        # SECCIÓN 3: MOTOR DE VOZ LOCAL & MODULACIÓN
         # =========================================================================
-        right_col = QVBoxLayout()
-        right_col.setSpacing(10)
-
-        # 1. Configuración de Voz y Audio
-        voice_box = QGroupBox("Motor de Voz Local & Modulación")
-        v_lay = QVBoxLayout(voice_box)
-        v_lay.setContentsMargins(10, 10, 10, 10)
-        v_lay.setSpacing(8)
+        self.voice_box = QGroupBox("Motor de Voz Local & Modulación (15 Voces Neurales)")
+        v_lay = QVBoxLayout(self.voice_box)
+        v_lay.setContentsMargins(10, 8, 10, 8)
+        v_lay.setSpacing(6)
 
         v_row1 = QHBoxLayout()
         v_row1.addWidget(QLabel("Voz Local:"))
@@ -381,31 +371,35 @@ class QuickReaderTab(QWidget):
         v_row1.addWidget(self.btn_test_voice)
         v_lay.addLayout(v_row1)
 
-        # Slider de Velocidad
-        spd_row = QHBoxLayout()
+        # Fila combinada de Velocidad y Volumen (Ahorro inteligente de espacio vertical)
+        sliders_row = QHBoxLayout()
+        sliders_row.setSpacing(12)
+
+        spd_col = QHBoxLayout()
         self.lbl_speed = QLabel("Velocidad: 1.0x (Normal)")
-        self.lbl_speed.setMinimumWidth(150)
+        self.lbl_speed.setMinimumWidth(140)
         self.speed_slider = QSlider(Qt.Orientation.Horizontal)
         self.speed_slider.setRange(5, 25)
         spd_val = int(float(self.config.get("speed_factor", 1.0)) * 10)
         self.speed_slider.setValue(spd_val)
         self.speed_slider.valueChanged.connect(self.on_speed_changed)
-        spd_row.addWidget(self.lbl_speed)
-        spd_row.addWidget(self.speed_slider)
-        v_lay.addLayout(spd_row)
+        spd_col.addWidget(self.lbl_speed)
+        spd_col.addWidget(self.speed_slider)
+        sliders_row.addLayout(spd_col, stretch=1)
 
-        # Slider de Volumen
-        vol_row = QHBoxLayout()
+        vol_col = QHBoxLayout()
         self.lbl_vol = QLabel("Volumen: 100%")
-        self.lbl_vol.setMinimumWidth(150)
+        self.lbl_vol.setMinimumWidth(100)
         self.vol_slider = QSlider(Qt.Orientation.Horizontal)
         self.vol_slider.setRange(0, 150)
         vol_init = int(self.config.get("volume", 100)) if isinstance(self.config.get("volume"), (int, float)) else 100
         self.vol_slider.setValue(vol_init)
         self.vol_slider.valueChanged.connect(self.on_volume_changed)
-        vol_row.addWidget(self.lbl_vol)
-        vol_row.addWidget(self.vol_slider)
-        v_lay.addLayout(vol_row)
+        vol_col.addWidget(self.lbl_vol)
+        vol_col.addWidget(self.vol_slider)
+        sliders_row.addLayout(vol_col, stretch=1)
+
+        v_lay.addLayout(sliders_row)
 
         # Directorio de guardado
         dir_row = QHBoxLayout()
@@ -418,64 +412,120 @@ class QuickReaderTab(QWidget):
         dir_row.addWidget(btn_browse_dir)
         v_lay.addLayout(dir_row)
 
-        right_col.addWidget(voice_box)
+        # =========================================================================
+        # SECCIÓN 4: ATAJOS GLOBALES ACTIVOS (AutoHotkey v2)
+        # =========================================================================
+        self.hk_box = QGroupBox("Atajos Globales Activos (AutoHotkey v2)")
+        hk_lay = QVBoxLayout(self.hk_box)
+        hk_lay.setContentsMargins(10, 8, 10, 8)
+        hk_lay.setSpacing(5)
 
-        # 2. Atajos Globales de Teclado
-        hk_box = QGroupBox("Atajos Globales Activos (AutoHotkey v2)")
-        hk_lay = QVBoxLayout(hk_box)
-        hk_lay.setContentsMargins(10, 10, 10, 10)
-        hk_lay.setSpacing(6)
-
+        hk_top = QHBoxLayout()
         self.lbl_ahk_status = QLabel("[ ACTIVO ] Servicio de Captura Global Operativo")
         self.lbl_ahk_status.setStyleSheet("color: #22c55e; font-weight: bold; font-size: 11px; font-family: Consolas, monospace;")
-        hk_lay.addWidget(self.lbl_ahk_status)
-
-        shortcuts_info = QLabel(
-            "• Texto Seleccionado + Click Izq + Espacio: Lectura en voz alta instantánea.\n"
-            "• Arrastre sobre texto + Soltar + Espacio (<1.3s): Lectura inmediata.\n"
-            "• Alt + Espacio: Atajo alternativo universal.\n"
-            "• Click Izq + S / Alt + S: Guardar selección en MP3 con metadatos.\n"
-            "• Escape (Esc): Detener reproducción activa.\n"
-            "• Alt + Rueda del Ratón: Ajustar velocidad al vuelo."
-        )
-        shortcuts_info.setStyleSheet("color: #64748b; font-size: 11px; line-height: 1.4;")
-        hk_lay.addWidget(shortcuts_info)
+        hk_top.addWidget(self.lbl_ahk_status)
+        hk_top.addStretch()
 
         btn_reload_ahk = QPushButton("[ ⟳ ] Reiniciar Servicio de Atajos")
         btn_reload_ahk.setObjectName("secondaryActionButton")
         btn_reload_ahk.clicked.connect(self.restart_ahk_service)
-        hk_lay.addWidget(btn_reload_ahk, alignment=Qt.AlignmentFlag.AlignLeft)
+        hk_top.addWidget(btn_reload_ahk)
+        hk_lay.addLayout(hk_top)
 
-        right_col.addWidget(hk_box)
+        shortcuts_info = QLabel(
+            "• Texto Seleccionado + Click Izq + Espacio: Lectura instantánea. | • Alt + Espacio: Atajo universal.\n" +
+            "• Arrastre sobre texto + Soltar + Espacio: Lectura. | • Click Izq + S: Guardar MP3. | • Esc: Detener audio."
+        )
+        shortcuts_info.setStyleSheet("color: #64748b; font-size: 11px; line-height: 1.4;")
+        shortcuts_info.setWordWrap(True)
+        hk_lay.addWidget(shortcuts_info)
 
-        # 3. Preferencias del Sistema
-        sys_box = QGroupBox("Sistema, Arranque & Metadatos")
-        s_lay = QVBoxLayout(sys_box)
-        s_lay.setContentsMargins(10, 10, 10, 10)
+        # =========================================================================
+        # SECCIÓN 5: SISTEMA, ARRANQUE & METADATOS
+        # =========================================================================
+        self.sys_box = QGroupBox("Sistema, Arranque & Metadatos")
+        s_lay = QVBoxLayout(self.sys_box)
+        s_lay.setContentsMargins(10, 8, 10, 8)
         s_lay.setSpacing(6)
 
+        sys_top = QHBoxLayout()
         self.chk_startup = QCheckBox("Iniciar con Windows automáticamente (abrir la app)")
         self.chk_startup.setChecked(is_startup_enabled() or bool(self.config.get("start_with_windows", True)))
-        s_lay.addWidget(self.chk_startup)
+        sys_top.addWidget(self.chk_startup)
 
         self.chk_translate = QCheckBox("Traducir automáticamente al español textos en inglés")
         self.chk_translate.setChecked(bool(self.config.get("auto_translate_en", True)))
-        s_lay.addWidget(self.chk_translate)
+        sys_top.addWidget(self.chk_translate)
+        sys_top.addStretch()
+
+        btn_save_cfg = QPushButton("[ ⤓ ] Guardar Configuración Predeterminada")
+        btn_save_cfg.setObjectName("primaryButton")
+        btn_save_cfg.clicked.connect(self.save_all_settings)
+        sys_top.addWidget(btn_save_cfg)
+        s_lay.addLayout(sys_top)
 
         lbl_sig = QLabel("Firma en Metadatos: HUMAN AI SYNERGY BY BENNER CASTILLO - 2026®")
         lbl_sig.setStyleSheet("color: #38bdf8; font-size: 11px; font-weight: 700; letter-spacing: 0.5px;")
         s_lay.addWidget(lbl_sig)
 
-        btn_save_cfg = QPushButton("[ ⤓ ] Guardar Configuración Predeterminada")
-        btn_save_cfg.setObjectName("primaryButton")
-        btn_save_cfg.clicked.connect(self.save_all_settings)
-        s_lay.addWidget(btn_save_cfg)
-        s_lay.addWidget(btn_save_cfg)
+        # Aplicar orientación inicial
+        self.current_orientation = "vertical"
+        self.set_orientation("vertical")
 
-        right_col.addWidget(sys_box)
-        right_col.addStretch()
+    def set_orientation(self, mode: str):
+        """Reorganiza los elementos manteniendo el orden secuencial estricto y sin generar scrollbars."""
+        self.current_orientation = mode
 
-        columns_layout.addLayout(right_col, stretch=45)
+        def clear_layout_items(lay):
+            while lay.count():
+                item = lay.takeAt(0)
+                w = item.widget()
+                if w:
+                    w.setParent(None)
+                elif item.layout():
+                    clear_layout_items(item.layout())
+
+        clear_layout_items(self.main_container_layout)
+
+        if mode == "vertical":
+            # Modo Vertical: Disposición secuencial 1 -> 2 -> 3 -> 4 -> 5 ocupando todo el ancho
+            self.main_container_layout.setContentsMargins(10, 6, 10, 6)
+            self.main_container_layout.setSpacing(6)
+
+            self.text_edit.setMinimumHeight(220)
+            self.text_edit.setMaximumHeight(16777215)
+
+            self.main_container_layout.addWidget(self.reader_box, stretch=4)
+            self.main_container_layout.addWidget(self.ai_box, stretch=0)
+            self.main_container_layout.addWidget(self.voice_box, stretch=0)
+            self.main_container_layout.addWidget(self.hk_box, stretch=0)
+            self.main_container_layout.addWidget(self.sys_box, stretch=0)
+        else:
+            # Modo Horizontal: 2 columnas balanceadas para monitores panorámicos
+            self.main_container_layout.setContentsMargins(10, 10, 10, 10)
+            self.main_container_layout.setSpacing(12)
+
+            self.text_edit.setMinimumHeight(150)
+            self.text_edit.setMaximumHeight(16777215)
+
+            cols = QHBoxLayout()
+            cols.setSpacing(12)
+
+            left_col = QVBoxLayout()
+            left_col.setSpacing(10)
+            left_col.addWidget(self.reader_box, stretch=3)
+            left_col.addWidget(self.ai_box, stretch=1)
+            cols.addLayout(left_col, stretch=55)
+
+            right_col = QVBoxLayout()
+            right_col.setSpacing(10)
+            right_col.addWidget(self.voice_box)
+            right_col.addWidget(self.hk_box)
+            right_col.addWidget(self.sys_box)
+            right_col.addStretch()
+            cols.addLayout(right_col, stretch=45)
+
+            self.main_container_layout.addLayout(cols)
 
     def toggle_ai_panel(self, checked: bool):
         self.ai_controls_frame.setEnabled(checked)
