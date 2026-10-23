@@ -33,6 +33,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSlider,
     QTextEdit,
     QVBoxLayout,
@@ -476,13 +477,14 @@ class QuickReaderTab(QWidget):
         """Reorganiza los elementos manteniendo el orden secuencial estricto y sin generar scrollbars."""
         self.current_orientation = mode
 
+        # Unparentar de forma segura manteniendo vivo el objeto C++ bajo self
+        for w in (self.reader_box, self.ai_box, self.voice_box, self.hk_box, self.sys_box):
+            w.setParent(self)
+
         def clear_layout_items(lay):
             while lay.count():
                 item = lay.takeAt(0)
-                w = item.widget()
-                if w:
-                    w.setParent(None)
-                elif item.layout():
+                if item.layout():
                     clear_layout_items(item.layout())
 
         clear_layout_items(self.main_container_layout)
@@ -501,30 +503,34 @@ class QuickReaderTab(QWidget):
             self.main_container_layout.addWidget(self.hk_box, stretch=0)
             self.main_container_layout.addWidget(self.sys_box, stretch=0)
         else:
-            # Modo Horizontal: 2 columnas balanceadas para monitores panorámicos
-            self.main_container_layout.setContentsMargins(10, 10, 10, 10)
-            self.main_container_layout.setSpacing(12)
+            # Modo Horizontal: 2 columnas balanceadas para monitores panorámicos (16:9)
+            self.main_container_layout.setContentsMargins(10, 8, 10, 8)
+            self.main_container_layout.setSpacing(10)
 
-            self.text_edit.setMinimumHeight(150)
+            self.text_edit.setMinimumHeight(240)
             self.text_edit.setMaximumHeight(16777215)
 
             cols = QHBoxLayout()
             cols.setSpacing(12)
 
+            # Columna Izquierda: Lector Rápido en Vivo ocupando todo el alto disponible (52% ancho)
             left_col = QVBoxLayout()
-            left_col.setSpacing(10)
-            left_col.addWidget(self.reader_box, stretch=3)
-            left_col.addWidget(self.ai_box, stretch=1)
-            cols.addLayout(left_col, stretch=55)
+            left_col.setContentsMargins(0, 0, 0, 0)
+            left_col.setSpacing(0)
+            left_col.addWidget(self.reader_box, stretch=1)
+            cols.addLayout(left_col, stretch=52)
 
+            # Columna Derecha: Cockpit de Control con las 4 secciones balanceadas (48% ancho)
             right_col = QVBoxLayout()
-            right_col.setSpacing(10)
+            right_col.setContentsMargins(0, 0, 0, 0)
+            right_col.setSpacing(8)
+
             right_col.addWidget(self.voice_box)
+            right_col.addWidget(self.ai_box)
             right_col.addWidget(self.hk_box)
             right_col.addWidget(self.sys_box)
-            right_col.addStretch()
-            cols.addLayout(right_col, stretch=45)
 
+            cols.addLayout(right_col, stretch=48)
             self.main_container_layout.addLayout(cols)
 
     def toggle_ai_panel(self, checked: bool):

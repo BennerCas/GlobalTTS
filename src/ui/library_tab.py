@@ -108,6 +108,8 @@ class LibraryTab(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.itemSelectionChanged.connect(self.on_book_selected)
+        self.table.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 0px; background: transparent; }")
+        self.table.horizontalScrollBar().setStyleSheet("QScrollBar:horizontal { height: 0px; background: transparent; }")
         self.catalog_tabs.addTab(self.table, "AUDIOLIBROS Y VIDEOS")
 
         # 2. Tabla de historial infinito de lecturas rápidas
@@ -118,6 +120,8 @@ class LibraryTab(QWidget):
         self.history_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.history_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.history_table.itemSelectionChanged.connect(self.on_history_selected)
+        self.history_table.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 0px; background: transparent; }")
+        self.history_table.horizontalScrollBar().setStyleSheet("QScrollBar:horizontal { height: 0px; background: transparent; }")
         self.catalog_tabs.addTab(self.history_table, "HISTORIAL DE LECTURAS RÁPIDAS")
 
         self.splitter.addWidget(self.catalog_tabs)
@@ -152,7 +156,7 @@ class LibraryTab(QWidget):
         self.text_preview = QTextEdit()
         self.text_preview.setReadOnly(True)
         self.text_preview.setPlaceholderText("Texto íntegro de la lectura rápida...")
-        self.text_preview.setMaximumHeight(170)
+        self.text_preview.setMinimumHeight(180)
         self.text_preview.setStyleSheet("""
             QTextEdit {
                 background-color: #0b0f16;
@@ -162,10 +166,30 @@ class LibraryTab(QWidget):
                 font-size: 12px;
                 line-height: 1.4;
             }
-            QScrollBar:vertical { width: 4px; background: transparent; }
+            QScrollBar:vertical { width: 0px; background: transparent; }
+            QScrollBar:horizontal { height: 0px; background: transparent; }
         """)
         self.text_preview.setVisible(False)
-        detail_layout.addWidget(self.text_preview)
+        detail_layout.addWidget(self.text_preview, stretch=1)
+
+        # Ficha técnica de especificaciones del máster (visible en modo libro)
+        self.spec_card = QFrame()
+        self.spec_card.setObjectName("metricCard")
+        spec_lay = QVBoxLayout(self.spec_card)
+        spec_lay.setContentsMargins(10, 8, 10, 8)
+        spec_lay.setSpacing(4)
+        lbl_spec_title = QLabel("Especificaciones del Máster Multimedia")
+        lbl_spec_title.setObjectName("metricTitle")
+        self.lbl_spec_details = QLabel(
+            "• Estándar de Transmisión: EBU R128 (-16 LUFS Normalizado)\n"
+            "• Formatos Generados: MP3 256kbps + Master FLAC 24-bit sin pérdida\n"
+            "• Video Karaoke: MP4 (H.264 / AAC) con subtítulos sincronizados\n"
+            "• Motor de Síntesis: Kokoro Studio Neural 24kHz & Piper DirectML"
+        )
+        self.lbl_spec_details.setStyleSheet("color: #94a3b8; font-size: 11px; line-height: 1.4;")
+        spec_lay.addWidget(lbl_spec_title)
+        spec_lay.addWidget(self.lbl_spec_details)
+        detail_layout.addWidget(self.spec_card)
 
         # Caja de Reproducción Multimedia
         player_box = QFrame()
@@ -261,10 +285,7 @@ class LibraryTab(QWidget):
         dist_lay.addWidget(self.btn_spotify)
         detail_layout.addWidget(self.dist_group)
 
-        detail_layout.addStretch()
         self.splitter.addWidget(self.detail_panel)
-        self.splitter.setSizes([520, 440])
-
         main_layout.addWidget(self.splitter)
 
         self.current_orientation = 'vertical'
@@ -276,9 +297,11 @@ class LibraryTab(QWidget):
         if mode == "vertical":
             self.splitter.setOrientation(Qt.Orientation.Vertical)
             self.splitter.setSizes([950, 600])
+            self.text_preview.setMaximumHeight(220)
         else:
             self.splitter.setOrientation(Qt.Orientation.Horizontal)
-            self.splitter.setSizes([540, 420])
+            self.splitter.setSizes([1000, 850])
+            self.text_preview.setMaximumHeight(16777215)
 
     def setup_player_events(self):
         self.player.positionChanged.connect(self.on_position_changed)
@@ -382,6 +405,7 @@ class LibraryTab(QWidget):
         # Cambiar modo visual a libro
         self.cover_label.setVisible(True)
         self.text_preview.setVisible(False)
+        self.spec_card.setVisible(True)
         self.btn_open_video.setVisible(True)
         self.dist_group.setVisible(True)
         self.btn_load_to_reader.setVisible(False)
@@ -435,6 +459,7 @@ class LibraryTab(QWidget):
         # Cambiar modo visual a lectura rápida
         self.cover_label.setVisible(False)
         self.text_preview.setVisible(True)
+        self.spec_card.setVisible(False)
         self.text_preview.setPlainText(h_data.get("text", ""))
         self.btn_open_video.setVisible(False)
         self.dist_group.setVisible(False)

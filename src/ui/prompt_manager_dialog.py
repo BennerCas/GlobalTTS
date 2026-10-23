@@ -49,6 +49,29 @@ class PromptManagerWidget(QWidget):
 
     def set_orientation(self, mode: str):
         self.current_orientation = mode
+        if not hasattr(self, 'form_box_layout'):
+            return
+
+        self.meta_frame.setParent(self.form_box)
+        self.editor_frame.setParent(self.form_box)
+
+        def clear_lay(lay):
+            while lay.count():
+                item = lay.takeAt(0)
+                if item.layout():
+                    clear_lay(item.layout())
+
+        clear_lay(self.form_box_layout)
+
+        if mode == "vertical":
+            self.form_box_layout.addWidget(self.meta_frame, stretch=0)
+            self.form_box_layout.addWidget(self.editor_frame, stretch=1)
+        else:
+            cols = QHBoxLayout()
+            cols.setSpacing(12)
+            cols.addWidget(self.meta_frame, stretch=42)
+            cols.addWidget(self.editor_frame, stretch=58)
+            self.form_box_layout.addLayout(cols)
 
     def _init_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -87,44 +110,35 @@ class PromptManagerWidget(QWidget):
 
         layout.addWidget(sel_box)
 
-        # 3. Formulario de Edición
-        form_box = QGroupBox("Editor de Directrices y Meta-Prompting")
-        form_lay = QFormLayout(form_box)
-        form_lay.setSpacing(8)
+        # 3. Formulario de Edición Reorganizable (Vertical u Horizontal sin vacíos)
+        self.form_box = QGroupBox("Editor de Directrices y Meta-Prompting")
+        self.form_box_layout = QVBoxLayout(self.form_box)
+        self.form_box_layout.setContentsMargins(10, 8, 10, 8)
+        self.form_box_layout.setSpacing(8)
+
+        # Panel izquierdo / superior: Metadatos y Parámetros
+        self.meta_frame = QFrame()
+        self.meta_lay = QFormLayout(self.meta_frame)
+        self.meta_lay.setContentsMargins(0, 0, 0, 0)
+        self.meta_lay.setSpacing(6)
 
         self.edit_name = QLineEdit()
-        form_lay.addRow("Nombre descriptivo:", self.edit_name)
+        self.meta_lay.addRow("Nombre descriptivo:", self.edit_name)
 
         self.lbl_id = QLabel("")
         self.lbl_id.setStyleSheet("color: #64748b; font-family: Consolas, monospace; font-weight: bold;")
-        form_lay.addRow("Identificador (ID):", self.lbl_id)
+        self.meta_lay.addRow("Identificador (ID):", self.lbl_id)
 
         self.edit_description = QLineEdit()
-        form_lay.addRow("Descripción:", self.edit_description)
+        self.meta_lay.addRow("Descripción:", self.edit_description)
 
-        # Editor de System Prompt
-        self.edit_system = QTextEdit()
-        self.edit_system.setPlaceholderText("System Prompt estructurado (CO-STAR, reglas duras, etiquetas TTS)...")
-        self.edit_system.setStyleSheet("""
-            font-family: Consolas, monospace;
-            font-size: 12px;
-            background-color: #0b0f16;
-            color: #38bdf8;
-            border: 1px solid #1e2633;
-            border-radius: 5px;
-        """)
-        self.edit_system.setMinimumHeight(180)
-        self.edit_system.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 0px; height: 0px; }")
-        form_lay.addRow("System Prompt:", self.edit_system)
-
-        # Template de usuario
         self.edit_template = QLineEdit()
         self.edit_template.setPlaceholderText("ej. Texto a enriquecer:\n\n{text}")
-        form_lay.addRow("Plantilla de Usuario:", self.edit_template)
+        self.meta_lay.addRow("Plantilla de Usuario:", self.edit_template)
 
         # Hiperparámetros NeMo
         params_row = QHBoxLayout()
-        params_row.setSpacing(8)
+        params_row.setSpacing(6)
         self.spin_temp = QDoubleSpinBox()
         self.spin_temp.setRange(0.0, 1.5)
         self.spin_temp.setSingleStep(0.05)
@@ -140,16 +154,41 @@ class PromptManagerWidget(QWidget):
         self.spin_ctx.setSingleStep(1024)
         self.spin_ctx.setValue(4096)
 
-        params_row.addWidget(QLabel("Temperature:"))
+        params_row.addWidget(QLabel("Temp:"))
         params_row.addWidget(self.spin_temp)
         params_row.addWidget(QLabel("Top P:"))
         params_row.addWidget(self.spin_topp)
-        params_row.addWidget(QLabel("Context Window (num_ctx):"))
+        params_row.addWidget(QLabel("Context:"))
         params_row.addWidget(self.spin_ctx)
         params_row.addStretch()
+        self.meta_lay.addRow("Parámetros IA:", params_row)
 
-        form_lay.addRow("Hiperparámetros IA:", params_row)
-        layout.addWidget(form_box, stretch=1)
+        # Panel derecho / inferior: Editor de System Prompt
+        self.editor_frame = QFrame()
+        ed_lay = QVBoxLayout(self.editor_frame)
+        ed_lay.setContentsMargins(0, 0, 0, 0)
+        ed_lay.setSpacing(4)
+        lbl_sys = QLabel("System Prompt Estructurado (CO-STAR & Directrices TTS):")
+        lbl_sys.setStyleSheet("color: #94a3b8; font-weight: 600; font-size: 11px;")
+        ed_lay.addWidget(lbl_sys)
+
+        self.edit_system = QTextEdit()
+        self.edit_system.setPlaceholderText("System Prompt estructurado (CO-STAR, reglas duras, etiquetas TTS)...")
+        self.edit_system.setStyleSheet("""
+            font-family: Consolas, monospace;
+            font-size: 12px;
+            background-color: #0b0f16;
+            color: #38bdf8;
+            border: 1px solid #1e2633;
+            border-radius: 5px;
+        """)
+        self.edit_system.setMinimumHeight(200)
+        self.edit_system.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 0px; height: 0px; background: transparent; }")
+        self.edit_system.horizontalScrollBar().setStyleSheet("QScrollBar:horizontal { height: 0px; background: transparent; }")
+        ed_lay.addWidget(self.edit_system, stretch=1)
+
+        layout.addWidget(self.form_box, stretch=1)
+        self.set_orientation("vertical")
 
         # 4. Barra de Acciones Inferior con Sincronización Markdown
         bottom_bar = QHBoxLayout()

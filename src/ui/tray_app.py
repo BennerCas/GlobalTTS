@@ -366,7 +366,7 @@ class MainWindow(QDialog):
         self.batch_table.setHorizontalHeaderLabels(["Archivo de Origen", "Voz Asignada", "Estado"])
         self.batch_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.batch_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.batch_table.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 4px; background: transparent; }")
+        self.batch_table.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 0px; background: transparent; }")
         batch_lay.addWidget(self.batch_table)
 
         # =========================================================================
@@ -425,7 +425,7 @@ class MainWindow(QDialog):
         self.table_cunas.setColumnWidth(3, 160)
         self.table_cunas.setColumnWidth(4, 60)
         self.table_cunas.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table_cunas.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 4px; background: transparent; }")
+        self.table_cunas.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 0px; background: transparent; }")
         cuna_lay.addWidget(self.table_cunas)
 
         self.interstitial_frame.setEnabled(False)
@@ -501,7 +501,7 @@ class MainWindow(QDialog):
         self.voice_pool_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.voice_pool_table.setColumnWidth(2, 200)
         self.voice_pool_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.voice_pool_table.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 4px; background: transparent; }")
+        self.voice_pool_table.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 0px; background: transparent; }")
         pool_inner.addWidget(self.voice_pool_table)
         voice_lay.addWidget(self.pool_frame)
 
@@ -686,7 +686,7 @@ class MainWindow(QDialog):
         self.update_generator_tab_layout(self.get_effective_orientation())
 
     def update_generator_tab_layout(self, mode: str):
-        """Ajusta la distribución del Generador manteniendo el orden exacto de secciones sin scroll."""
+        """Ajusta la distribución del Generador sin espacios vacíos y con scroll invisible en tablas."""
         def clear_layout_items(lay):
             while lay.count():
                 item = lay.takeAt(0)
@@ -696,7 +696,21 @@ class MainWindow(QDialog):
                 elif item.layout():
                     clear_layout_items(item.layout())
 
+        for w in (self.batch_group, self.extra_group, self.voice_group, self.ai_group, self.out_group, self.bottom_control_box):
+            w.setParent(self.tab_generator)
+
+        def clear_layout_items(lay):
+            while lay.count():
+                item = lay.takeAt(0)
+                if item.layout():
+                    clear_layout_items(item.layout())
+
         clear_layout_items(self.gen_layout)
+
+        # Configurar scrollbars invisibles en todas las tablas
+        for tbl in (self.batch_table, self.table_cunas, self.voice_pool_table):
+            tbl.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 0px; background: transparent; }")
+            tbl.horizontalScrollBar().setStyleSheet("QScrollBar:horizontal { height: 0px; background: transparent; }")
 
         if mode == "vertical":
             # Modo Vertical: Orden secuencial 1 -> 2 -> 3 -> 4 -> 5 -> 6 ocupando todo el ancho y alto
@@ -718,38 +732,40 @@ class MainWindow(QDialog):
             self.gen_layout.addWidget(self.out_group, stretch=0)
             self.gen_layout.addWidget(self.bottom_control_box, stretch=0)
         else:
-            # Modo Horizontal: 2 columnas balanceadas para monitores panorámicos
-            self.gen_layout.setContentsMargins(10, 10, 10, 10)
+            # Modo Horizontal (16:9): 2 columnas balanceadas ocupando 100% de la ventana sin vacíos
+            self.gen_layout.setContentsMargins(10, 8, 10, 8)
             self.gen_layout.setSpacing(8)
 
-            # Alturas compactas para que quepa en 1080p horizontal sin scrollbar
-            self.batch_table.setMinimumHeight(90)
-            self.batch_table.setMaximumHeight(140)
-            self.table_cunas.setMinimumHeight(90)
-            self.table_cunas.setMaximumHeight(115)
-            self.voice_pool_table.setMinimumHeight(90)
-            self.voice_pool_table.setMaximumHeight(115)
+            # Tablas fluidas sin topes artificiales para eliminar espacios muertos
+            self.batch_table.setMinimumHeight(110)
+            self.batch_table.setMaximumHeight(16777215)
+            self.table_cunas.setMinimumHeight(100)
+            self.table_cunas.setMaximumHeight(16777215)
+            self.voice_pool_table.setMinimumHeight(110)
+            self.voice_pool_table.setMaximumHeight(16777215)
 
             cols_lay = QHBoxLayout()
-            cols_lay.setSpacing(10)
+            cols_lay.setSpacing(12)
 
+            # Columna Izquierda: Archivos (50%) + Portada y Cuñas (50%)
             left_col = QVBoxLayout()
+            left_col.setContentsMargins(0, 0, 0, 0)
             left_col.setSpacing(8)
-            left_col.addWidget(self.batch_group)
-            left_col.addWidget(self.extra_group)
-            left_col.addStretch()
+            left_col.addWidget(self.batch_group, stretch=1)
+            left_col.addWidget(self.extra_group, stretch=1)
             cols_lay.addLayout(left_col, stretch=50)
 
+            # Columna Derecha: Voces (expandible) + NeMo IA + Formatos de Salida
             right_col = QVBoxLayout()
+            right_col.setContentsMargins(0, 0, 0, 0)
             right_col.setSpacing(8)
-            right_col.addWidget(self.voice_group)
-            right_col.addWidget(self.ai_group)
-            right_col.addWidget(self.out_group)
-            right_col.addStretch()
+            right_col.addWidget(self.voice_group, stretch=1)
+            right_col.addWidget(self.ai_group, stretch=0)
+            right_col.addWidget(self.out_group, stretch=0)
             cols_lay.addLayout(right_col, stretch=50)
 
-            self.gen_layout.addLayout(cols_lay)
-            self.gen_layout.addWidget(self.bottom_control_box)
+            self.gen_layout.addLayout(cols_lay, stretch=1)
+            self.gen_layout.addWidget(self.bottom_control_box, stretch=0)
 
     def toggle_ai_options(self, checked: bool):
         self.ai_options_frame.setEnabled(checked)
