@@ -442,6 +442,9 @@ class QuickReaderTab(QWidget):
         self.combo_ai_mode.addItem("Análisis de Diálogos y Emociones", "dialogue_analysis")
         self.combo_ai_mode.addItem("Guion de Audio-Trailer Promocional 90s", "trailer_script")
         self.combo_ai_mode.addItem("Dirección de Efectos Foley SFX y Ambiente", "sfx_director")
+        saved_mode_idx = self.combo_ai_mode.findData(self.config.get("ai_mode", "enhance"))
+        if saved_mode_idx >= 0:
+            self.combo_ai_mode.setCurrentIndex(saved_mode_idx)
         row1.addWidget(self.combo_ai_mode, stretch=1)
         ai_ctrl_lay.addLayout(row1)
 
@@ -451,7 +454,8 @@ class QuickReaderTab(QWidget):
         self.combo_persona.addItem("1ra Persona (Yo)", "1ra")
         self.combo_persona.addItem("2da Persona (Tú/Usted)", "2da")
         self.combo_persona.addItem("3ra Persona (Él/Ella/Narrador)", "3ra")
-        self.combo_persona.setCurrentIndex(2)
+        saved_persona_idx = self.combo_persona.findData(self.config.get("persona", "3ra"))
+        self.combo_persona.setCurrentIndex(saved_persona_idx if saved_persona_idx >= 0 else 2)
         row2.addWidget(self.combo_persona)
 
         row2.addWidget(QLabel("Tiempo:"))
@@ -460,6 +464,9 @@ class QuickReaderTab(QWidget):
         self.combo_tense.addItem("Presente (en vivo)", "presente")
         self.combo_tense.addItem("Presente Continuo", "presente_continuo")
         self.combo_tense.addItem("Futuro", "futuro")
+        saved_tense_idx = self.combo_tense.findData(self.config.get("tense", "pasado"))
+        if saved_tense_idx >= 0:
+            self.combo_tense.setCurrentIndex(saved_tense_idx)
         row2.addWidget(self.combo_tense)
 
         self.btn_apply_ai = QPushButton("[ ► ] Aplicar Expresividad / Narrar")
@@ -468,7 +475,9 @@ class QuickReaderTab(QWidget):
         row2.addWidget(self.btn_apply_ai)
 
         ai_ctrl_lay.addLayout(row2)
-        self.toggle_ai_panel(False)
+        ai_init_enabled = bool(self.config.get("ai_enabled", False))
+        self.chk_ai_enabled.setChecked(ai_init_enabled)
+        self.toggle_ai_panel(ai_init_enabled)
         ai_lay.addWidget(self.ai_controls_frame)
 
         # =========================================================================
@@ -500,13 +509,16 @@ class QuickReaderTab(QWidget):
         # Fila DSP y Soundscape
         dsp_row = QHBoxLayout()
         self.chk_dsp_master = QCheckBox("Masterización Estudio DSP (HPF 80Hz + De-Esser + Limitador -1.0 dBTP)")
-        self.chk_dsp_master.setChecked(True)
+        self.chk_dsp_master.setChecked(bool(self.config.get("dsp_mastering", True)))
         dsp_row.addWidget(self.chk_dsp_master)
 
         dsp_row.addWidget(QLabel("Fondo Ambiental (Ducking):"))
         self.combo_soundscape = QComboBox()
         for k, label in SOUNDSCAPE_PRESETS.items():
             self.combo_soundscape.addItem(label, k)
+        saved_sc_idx = self.combo_soundscape.findData(self.config.get("soundscape", "none"))
+        if saved_sc_idx >= 0:
+            self.combo_soundscape.setCurrentIndex(saved_sc_idx)
         dsp_row.addWidget(self.combo_soundscape, stretch=1)
         v_lay.addLayout(dsp_row)
 
@@ -521,6 +533,7 @@ class QuickReaderTab(QWidget):
         spd_val = int(float(self.config.get("speed_factor", 1.0)) * 10)
         self.speed_slider.setValue(spd_val)
         self.speed_slider.valueChanged.connect(self.on_speed_changed)
+        self.on_speed_changed(spd_val)
         spd_col.addWidget(self.lbl_speed)
         spd_col.addWidget(self.speed_slider)
         sliders_row.addLayout(spd_col, stretch=1)
@@ -533,6 +546,7 @@ class QuickReaderTab(QWidget):
         vol_init = int(self.config.get("volume", 100)) if isinstance(self.config.get("volume"), (int, float)) else 100
         self.vol_slider.setValue(vol_init)
         self.vol_slider.valueChanged.connect(self.on_volume_changed)
+        self.on_volume_changed(vol_init)
         vol_col.addWidget(self.lbl_vol)
         vol_col.addWidget(self.vol_slider)
         sliders_row.addLayout(vol_col, stretch=1)
@@ -1085,6 +1099,10 @@ class QuickReaderTab(QWidget):
             "speed_factor": self.speed_slider.value() / 10.0,
             "volume": self.vol_slider.value(),
             "style_id": self.combo_ai_style.currentData() or "cuento",
+            "ai_enabled": self.chk_ai_enabled.isChecked(),
+            "ai_mode": self.combo_ai_mode.currentData() or "enhance",
+            "persona": self.combo_persona.currentData() or "3ra",
+            "tense": self.combo_tense.currentData() or "pasado",
             "apply_lexicon": self.chk_lexicon.isChecked(),
             "emotional_modulation": self.chk_emotion_mod.isChecked(),
             "auto_sfx": self.chk_auto_sfx.isChecked(),

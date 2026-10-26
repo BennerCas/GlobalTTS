@@ -198,6 +198,8 @@ class LibraryTab(QWidget):
         self.badge_flac.setStyleSheet("background-color: #0c1523; border: 1px solid #1e3a5f; color: #a855f7; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: Consolas, monospace;")
         self.badge_mp4 = QLabel("KARAOKE MP4")
         self.badge_mp4.setStyleSheet("background-color: #0c1523; border: 1px solid #1e3a5f; color: #f59e0b; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: Consolas, monospace;")
+        self.badge_epub3 = QLabel("EPUB3 SMIL")
+        self.badge_epub3.setStyleSheet("background-color: #0c1523; border: 1px solid #1e3a5f; color: #38bdf8; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: Consolas, monospace;")
         self.badge_engine = QLabel("KOKORO & PIPER")
         self.badge_engine.setStyleSheet("background-color: #0c1523; border: 1px solid #1e3a5f; color: #60a5fa; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: Consolas, monospace;")
 
@@ -206,6 +208,7 @@ class LibraryTab(QWidget):
         badges_lay.addWidget(self.badge_m4b)
         badges_lay.addWidget(self.badge_flac)
         badges_lay.addWidget(self.badge_mp4)
+        badges_lay.addWidget(self.badge_epub3)
         badges_lay.addWidget(self.badge_engine)
         badges_lay.addStretch()
         meta_panel_lay.addWidget(self.badges_widget)
@@ -461,8 +464,9 @@ class LibraryTab(QWidget):
                     flac_files = list(item.glob("*.flac")) + list(item.glob("*.wav"))
                     cover_files = list(item.glob("cover.*"))
                     srt_files = list(item.glob("*.srt"))
+                    epub_files = list(item.glob("*.epub"))
 
-                    if not (mp3_files or m4b_files or mp4_files or flac_files or meta_files):
+                    if not (mp3_files or m4b_files or mp4_files or flac_files or epub_files or meta_files):
                         continue
 
                     self.books.append({
@@ -477,6 +481,7 @@ class LibraryTab(QWidget):
                         "master": flac_files[0] if flac_files else None,
                         "cover": cover_files[0] if cover_files else None,
                         "srt": srt_files[0] if srt_files else None,
+                        "epub": epub_files[0] if epub_files else None,
                         "meta": meta,
                     })
 
@@ -512,6 +517,8 @@ class LibraryTab(QWidget):
                 formats.append("[ FLAC ]")
             if b["mp4"]:
                 formats.append("[ MP4 ]")
+            if b.get("epub"):
+                formats.append("[ EPUB3 ]")
             if b.get("srt"):
                 formats.append("[ SRT ]")
             self.table.setItem(row, 3, QTableWidgetItem(" ".join(formats)))
@@ -574,6 +581,7 @@ class LibraryTab(QWidget):
         self.badge_m4b.setVisible(bool(book_data.get("m4b") and book_data["m4b"].exists()))
         self.badge_flac.setVisible(bool(book_data.get("master") and book_data["master"].exists()))
         self.badge_mp4.setVisible(bool(book_data.get("mp4") and book_data["mp4"].exists()))
+        self.badge_epub3.setVisible(bool(book_data.get("epub") and book_data["epub"].exists()))
 
         if book_data["cover"] and book_data["cover"].exists():
             pix = QPixmap(str(book_data["cover"])).scaled(
@@ -666,11 +674,15 @@ class LibraryTab(QWidget):
             return
         folder: Path = self.selected_book_data["folder"]
         title = self.selected_book_data["title"]
+        meta = self.selected_book_data.get("meta") or {}
+        narration_meta = meta.get("narration") if isinstance(meta.get("narration"), dict) else {}
+        book_style = str(narration_meta.get("style") or meta.get("style") or "epico")
+        book_author = str(meta.get("author") or "GlobalTTS Studio")
         try:
             dest = generate_audiobook_cover(
                 title=title,
-                author="GlobalTTS Studio",
-                style="epico",
+                author=book_author,
+                style=book_style,
                 output_path=folder / "cover.png",
             )
             self.selected_book_data["cover"] = dest
@@ -678,7 +690,7 @@ class LibraryTab(QWidget):
                 280, 280, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
             )
             self.cover_label.setPixmap(pix)
-            QMessageBox.information(self, "Portada IA Generada", f"Portada 1024x1024 creada exitosamente:\n{dest}")
+            QMessageBox.information(self, "Portada IA Generada", f"Portada 1024x1024 ({book_style}) creada exitosamente:\n{dest}")
         except Exception as exc:
             QMessageBox.critical(self, "Error en Portada IA", f"No se pudo generar la portada:\n{exc}")
 
@@ -692,6 +704,8 @@ class LibraryTab(QWidget):
             meta = self.selected_book_data.get("meta", {})
             src_file = meta.get("source_file", "")
             v_key = meta.get("voice_key", "kokoro-ef_dora")
+            narration_meta = meta.get("narration") if isinstance(meta.get("narration"), dict) else {}
+            book_style = str(narration_meta.get("style") or meta.get("style") or "epico")
             try:
                 from src.core.models import Chapter, Document
                 if src_file and Path(src_file).exists():
@@ -710,7 +724,7 @@ class LibraryTab(QWidget):
                 res = pipe.generate_standalone_trailer(
                     doc=doc,
                     book_folder=folder,
-                    style="epico",
+                    style=book_style,
                     cover_image_path=self.selected_book_data.get("cover"),
                 )
                 if res:
@@ -737,7 +751,7 @@ class LibraryTab(QWidget):
             self.btn_play.setText("[ || ] Pausa (Trailer)")
 
     def inspect_subtitles_and_seo(self):
-        """Muestra o abre los subtítulos (.SRT/.VTT/.LRC/.ASS) y el paquete SEO/RSS."""
+        """Muestra o abre los subtítulos (.SRT/.VTT/.LRC/.ASS), EPUB3 Read-Aloud y el paquete SEO/RSS."""
         if not self.selected_book_data:
             return
         folder: Path = self.selected_book_data["folder"]
@@ -745,6 +759,7 @@ class LibraryTab(QWidget):
         srt_files = list(folder.glob("*.srt"))
         vtt_files = list(folder.glob("*.vtt"))
         lrc_files = list(folder.glob("*.lrc"))
+        epub_files = list(folder.glob("*.epub"))
         rss_file = folder / "podcast_rss.xml"
         cap_dir = folder / "capitulos"
 
@@ -755,6 +770,8 @@ class LibraryTab(QWidget):
             info_lines.append(f"• Subtítulos WebVTT: {vtt_files[0].name}")
         if lrc_files:
             info_lines.append(f"• Letras LRC: {lrc_files[0].name}")
+        if epub_files:
+            info_lines.append(f"• E-Book Sincronizado EPUB3 SMIL: {epub_files[0].name}")
         if seo_file.exists():
             info_lines.append(f"• Paquete SEO YouTube/Spotify: {seo_file.name}")
         if rss_file.exists():

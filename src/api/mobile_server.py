@@ -279,12 +279,14 @@ class _StreamingRequestHandler(BaseHTTPRequestHandler):
                 mp3_candidates = [p for p in proj.glob("*.mp3") if p.name != "trailer_sinopsis.mp3"]
                 m4b_candidates = list(proj.glob("*.m4b"))
                 mp4_candidates = list(proj.glob("*.mp4"))
+                epub_candidates = list(proj.glob("*.epub"))
                 trailer = proj / "trailer_sinopsis.mp3"
 
                 audio_f = mp3_candidates[0] if mp3_candidates else None
                 m4b = m4b_candidates[0] if m4b_candidates else None
                 mp4 = mp4_candidates[0] if mp4_candidates else None
-                if not audio_f and not m4b and not mp4:
+                epub_f = epub_candidates[0] if epub_candidates else None
+                if not audio_f and not m4b and not mp4 and not epub_f:
                     continue
 
                 links: list[str] = []
@@ -297,6 +299,9 @@ class _StreamingRequestHandler(BaseHTTPRequestHandler):
                 if m4b and m4b.exists():
                     mu = f"/media/{urllib.parse.quote(proj.name)}/{urllib.parse.quote(m4b.name)}"
                     links.append(f'<a href="{mu}" download style="color:#38bdf8;font-size:13px;margin-right:14px;">[ ⤓ ] Descargar .M4B (Capítulos)</a>')
+                if epub_f and epub_f.exists():
+                    eu = f"/media/{urllib.parse.quote(proj.name)}/{urllib.parse.quote(epub_f.name)}"
+                    links.append(f'<a href="{eu}" download style="color:#a855f7;font-size:13px;margin-right:14px;">[ ⤓ ] Descargar EPUB3 Read-Aloud</a>')
                 if mp4 and mp4.exists():
                     vu = f"/media/{urllib.parse.quote(proj.name)}/{urllib.parse.quote(mp4.name)}"
                     links.append(f'<a href="{vu}" target="_blank" style="color:#10b981;font-size:13px;">[ ► ] Ver Video Karaoke MP4</a>')
@@ -363,6 +368,8 @@ class _StreamingRequestHandler(BaseHTTPRequestHandler):
         mime_type, _ = mimetypes.guess_type(str(file_path))
         if file_path.suffix.lower() == ".m4b":
             mime_type = "audio/mp4"
+        elif file_path.suffix.lower() == ".epub":
+            mime_type = "application/epub+zip"
         mime_type = mime_type or "application/octet-stream"
 
         range_header = self.headers.get("Range")
