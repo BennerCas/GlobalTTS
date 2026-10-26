@@ -22,13 +22,25 @@ logger = logging.getLogger("globaltts.cover_generator")
 # Paletas cromáticas editoriales por género/estilo (RGB fondo oscuro, acento primario, acento secundario)
 STYLE_PALETTES: dict[str, tuple[tuple[int, int, int], tuple[int, int, int], tuple[int, int, int]]] = {
     "terror": ((10, 12, 18), (185, 28, 28), (120, 140, 165)),
+    "terror_psicologico": ((10, 12, 18), (185, 28, 28), (120, 140, 165)),
     "ciencia_ficcion": ((8, 13, 28), (6, 182, 212), (99, 102, 241)),
+    "cyberpunk_scifi": ((8, 13, 28), (6, 182, 212), (99, 102, 241)),
     "epico": ((18, 12, 10), (245, 158, 11), (217, 119, 6)),
     "cuento": ((12, 20, 24), (56, 189, 248), (251, 191, 36)),
+    "cuentacuentos": ((14, 18, 28), (56, 189, 248), (245, 158, 11)),
+    "infantil_fabula": ((14, 24, 34), (52, 211, 153), (251, 191, 36)),
     "ensayo": ((15, 23, 42), (14, 165, 233), (148, 163, 184)),
+    "ensayo_cientifico": ((15, 23, 42), (14, 165, 233), (148, 163, 184)),
     "historia": ((24, 18, 14), (217, 160, 91), (168, 130, 90)),
+    "suceso": ((16, 16, 22), (239, 68, 68), (245, 158, 11)),
+    "true_crime_documental": ((12, 14, 20), (220, 38, 38), (148, 163, 184)),
     "poesia": ((19, 14, 28), (192, 132, 252), (244, 114, 182)),
+    "poetico_lirico": ((19, 14, 28), (192, 132, 252), (244, 114, 182)),
+    "confesion_intima": ((18, 15, 24), (167, 139, 250), (203, 213, 225)),
+    "oratoria_motivacional": ((12, 18, 32), (245, 158, 11), (56, 189, 248)),
     "locutor_radio": ((10, 15, 25), (34, 211, 238), (59, 130, 246)),
+    "podcast_conversacional": ((11, 19, 29), (16, 185, 129), (56, 189, 248)),
+    "institucional_corporativo": ((12, 18, 28), (56, 189, 248), (148, 163, 184)),
 }
 
 

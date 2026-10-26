@@ -1,8 +1,9 @@
 """Gestor y biblioteca de Prompts Maestros para GlobalTTS.
 
 Gestiona de forma persistente y modular los prompts maestros, modos de IA
-(enriquecimiento prosódico, reescritura narrativa, traducción, análisis de diálogos)
-y estilos narrativos basados en Meta-Prompting CO-STAR y control de etiquetas TTS.
+(enriquecimiento prosódico, reescritura narrativa, traducción, análisis de diálogos,
+guion de audio-trailers 90s y dirección de efectos Foley SFX) y los 16 estilos
+narrativos industriales basados en Meta-Prompting CO-STAR, <thinking> XML y control acústico.
 """
 from __future__ import annotations
 
@@ -42,7 +43,7 @@ class PromptItem:
     description: str
     system_prompt: str
     user_template: str = "{text}"
-    mode_key: Optional[str] = None  # ej. "enhance", "rewrite", "translate", "dialogue_analysis"
+    mode_key: Optional[str] = None  # "enhance", "rewrite", "translate", "dialogue_analysis", "trailer_script", "sfx_director"
     parameters: Dict[str, Any] = field(default_factory=lambda: {"temperature": 0.4, "top_p": 0.9, "num_ctx": 4096})
     is_builtin: bool = False
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -68,17 +69,28 @@ class PromptItem:
 
 STYLE_ACOUSTIC_DEFAULTS: Dict[str, Tuple[float, float, float]] = {
     "cuento": (0.94, 1.0, 1.35),
-    "cuentacuentos": (0.94, 1.0, 1.35),
+    "cuentacuentos": (0.93, 1.2, 1.40),
     "locutor_radio": (1.06, 2.5, 0.85),
+    "historia": (0.95, 1.2, 1.30),
+    "suceso": (1.08, 2.2, 0.85),
+    "epico": (0.92, 2.5, 1.45),
     "terror": (0.86, -1.5, 1.60),
-    "epico": (0.92, 2.0, 1.40),
-    "ciencia_ficcion": (0.98, 1.0, 1.10),
+    "terror_psicologico": (0.86, -1.5, 1.65),
     "ensayo": (0.93, 0.5, 1.35),
-    "historia": (0.95, 0.8, 1.25),
+    "ensayo_cientifico": (0.96, 0.8, 1.25),
     "poesia": (0.85, -0.5, 1.65),
+    "poetico_lirico": (0.85, -0.5, 1.70),
+    "infantil_fabula": (0.92, 1.5, 1.40),
+    "ciencia_ficcion": (0.98, 1.0, 1.10),
+    "cyberpunk_scifi": (1.03, 1.5, 1.05),
+    "confesion_intima": (0.88, -1.2, 1.55),
+    "oratoria_motivacional": (1.02, 2.8, 1.20),
+    "true_crime_documental": (0.91, 0.5, 1.45),
+    "podcast_conversacional": (1.04, 1.6, 0.95),
+    "institucional": (1.02, 1.8, 0.95),
+    "institucional_corporativo": (1.00, 1.8, 1.05),
     "drama": (0.94, 1.5, 1.30),
     "misterioso": (0.88, -1.0, 1.50),
-    "institucional": (1.02, 1.8, 0.95),
 }
 
 
@@ -133,6 +145,7 @@ class NarrativeStyleDef:
             f"- Cadencia y ritmo: {self.cadence}",
             f"- Perfil de vocabulario: {self.vocabulary_profile}",
             f"- Directrices de prosodia y pausas: {self.prosody_guidance}",
+            f"- Perfil acústico DSP: Velocidad {self.speed_multiplier:.2f}x | Ganancia {self.gain_db:+.1f}dB | Pausas {self.pause_multiplier:.2f}x",
         ]
         if self.system_prompt_addon:
             lines.append(f"- Reglas de estilo:\n{self.system_prompt_addon}")
@@ -144,13 +157,15 @@ class PromptLibrary:
 
     def __init__(self, json_path: Optional[str | Path] = None):
         self.json_path = Path(json_path) if json_path else DEFAULT_PROMPTS_PATH
-        self.version: str = "1.0.0"
+        self.version: str = "2.0.0"
         self.metadata: Dict[str, Any] = {}
         self.active_configuration: Dict[str, str] = {
             "enhance": "builtin_enhance",
             "rewrite": "builtin_rewrite",
             "translate": "builtin_translate",
             "dialogue_analysis": "builtin_dialogue_analysis",
+            "trailer_script": "builtin_trailer_script",
+            "sfx_director": "builtin_sfx_director",
         }
         self.modes: Dict[str, PromptItem] = {}
         self.styles: Dict[str, NarrativeStyleDef] = {}
@@ -170,9 +185,11 @@ class PromptLibrary:
             with open(self.json_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            self.version = data.get("version", "1.0.0")
+            self.version = data.get("version", "2.0.0")
             self.metadata = data.get("metadata", {})
-            self.active_configuration = data.get("active_configuration", self.active_configuration)
+            loaded_cfg = data.get("active_configuration", {})
+            for k, v in loaded_cfg.items():
+                self.active_configuration[k] = v
 
             self.modes = {}
             for k, v in data.get("modes", {}).items():
@@ -214,12 +231,11 @@ class PromptLibrary:
 
     def _create_factory_defaults(self) -> None:
         """Inicializa los modos y estilos de fábrica en memoria."""
-        # Se asegura de poblar con la suite completa si el JSON no estuviera
-        self.version = "1.0.0"
+        self.version = "2.0.0"
         self.metadata = {
             "engine": "Mistral NeMo 12B Instruct (Local Ollama)",
             "context_window": 4096,
-            "framework": "Meta-Prompting CO-STAR & Voice Tag Ingestion",
+            "framework": "Meta-Prompting CO-STAR, XML <thinking> & Voice/SFX Tag Ingestion",
             "description": "Catálogo Maestro de Prompts y Estilos Narrativos para GlobalTTS"
         }
         self.active_configuration = {
@@ -227,6 +243,8 @@ class PromptLibrary:
             "rewrite": "builtin_rewrite",
             "translate": "builtin_translate",
             "dialogue_analysis": "builtin_dialogue_analysis",
+            "trailer_script": "builtin_trailer_script",
+            "sfx_director": "builtin_sfx_director",
         }
         # Si el archivo JSON default existe en el repo, podemos leerlo
         if DEFAULT_PROMPTS_PATH.exists() and self.json_path != DEFAULT_PROMPTS_PATH:
@@ -248,20 +266,22 @@ class PromptLibrary:
             id="builtin_enhance",
             category="mode",
             mode_key="enhance",
-            name="Enriquecimiento Prosódico y Emocional",
-            description="Inyecta etiquetas prosódicas y emocionales sin alterar palabras del texto original.",
+            name="Enriquecimiento Prosódico y Emocional (Master Prosody Director)",
+            description="Inyecta etiquetas prosódicas, emocionales e inflexiones vocales sin alterar palabras del texto original.",
             system_prompt=(
                 "Eres el Principal Audio Narrative Director especializado en audiolibros dramáticos de alta fidelidad.\n"
                 "Tu única tarea es enriquecer el texto insertando etiquetas de voz TTS.\n\n"
                 "Etiquetas permitidas:\n"
-                "- [pausa:1s], [pausa:500ms], [pausa:300ms]\n"
+                "- [pausa:1s], [pausa:500ms], [pausa:300ms], [pausa_dramatica]\n"
+                "- [risa], [suspiro], [jadeo]\n"
                 "- [lento]...[/lento], [rapido]...[/rapido]\n"
                 "- [susurro]...[/susurro], [enfasis]...[/enfasis]\n"
                 "- [misterioso]...[/misterioso], [alegre]...[/alegre], [triste]...[/triste], [serio]...[/serio], [emocionado]...[/emocionado], [enojado]...[/enojado]\n\n"
                 "REGLAS:\n"
-                "1. NO cambies ni elimines ninguna palabra del texto original.\n"
-                "2. Cierra siempre las etiquetas de rango.\n"
-                "3. Devuelve únicamente el texto enriquecido sin introducciones ni comentarios."
+                "1. Razona primero dentro de <thinking>...</thinking> qué emociones y pausas requiere el pasaje.\n"
+                "2. NO cambies ni elimines ninguna palabra del texto original.\n"
+                "3. Cierra siempre las etiquetas de rango.\n"
+                "4. Fuera de <thinking>, devuelve únicamente el texto enriquecido sin introducciones ni comentarios."
             ),
             user_template="Texto a enriquecer:\n\n{text}",
             is_builtin=True,
@@ -271,7 +291,7 @@ class PromptLibrary:
             id="builtin_rewrite",
             category="mode",
             mode_key="rewrite",
-            name="Reescritura Narrativa Integral",
+            name="Reescritura Narrativa Integral (Master Storyteller Engine)",
             description="Transforma el texto base en narración oral según persona, tiempo y estilo.",
             system_prompt=(
                 "Eres un Master Storyteller y Narrador de Audiolibros.\n"
@@ -282,10 +302,11 @@ class PromptLibrary:
                 "- Estilo: {style_name}\n"
                 "{style_guidance}\n\n"
                 "REGLAS:\n"
-                "1. Conserva la esencia y hechos clave.\n"
-                "2. Aplica la perspectiva y tiempo indicados.\n"
-                "3. Inyecta etiquetas TTS ([pausa:1s], [lento], [susurro], [enfasis], [misterioso]).\n"
-                "4. Responde únicamente con la narración final terminada."
+                "1. Planifica la estructura en <thinking>...</thinking> antes de redactar.\n"
+                "2. Conserva la esencia y hechos clave.\n"
+                "3. Aplica la perspectiva y tiempo indicados.\n"
+                "4. Inyecta etiquetas TTS ([pausa:1s], [lento], [susurro], [enfasis], [misterioso], [suspiro], [sfx:...]).\n"
+                "5. Fuera de <thinking>, responde únicamente con la narración final terminada."
             ),
             user_template="Texto base para transformar en narración:\n\n{text}",
             is_builtin=True,
@@ -295,15 +316,16 @@ class PromptLibrary:
             id="builtin_translate",
             category="mode",
             mode_key="translate",
-            name="Traducción y Adaptación Narrativa (es-LA)",
+            name="Traducción y Adaptación Narrativa Fono-Acústica (es-LA Neutro)",
             description="Traduce y adapta cualquier texto al español latinoamericano neutro con alta eufonía para audiolibros.",
             system_prompt=(
                 "Eres un Traductor Literario y Adaptador de Audio para Español Latinoamericano Neutro.\n"
                 "Tu objetivo es traducir y adaptar el texto para que suene natural, fluido y expresivo al ser leído en voz alta.\n\n"
                 "REGLAS:\n"
-                "1. Traduce con fidelidad semántica priorizando fluidez oral.\n"
-                "2. Emplea español latinoamericano estándar neutro.\n"
-                "3. Responde únicamente con la traducción adaptada."
+                "1. Analiza giros idiomáticos y ritmo fonético dentro de <thinking>...</thinking>.\n"
+                "2. Traduce con fidelidad semántica priorizando fluidez oral.\n"
+                "3. Emplea español latinoamericano estándar neutro.\n"
+                "4. Fuera de <thinking>, responde únicamente con la traducción adaptada."
             ),
             user_template="Texto a traducir y adaptar:\n\n{text}",
             is_builtin=True,
@@ -313,14 +335,44 @@ class PromptLibrary:
             id="builtin_dialogue_analysis",
             category="mode",
             mode_key="dialogue_analysis",
-            name="Detección y Clasificación Dramática de Diálogos (Auto-Casting)",
+            name="Detección y Clasificación Dramática de Diálogos (Auto-Casting Multivoz)",
             description="Segmenta el texto identificando narrador vs diálogos y emociones para casting multivoz.",
             system_prompt=(
                 "Eres el Director de Casting y Analista Dramático de GlobalTTS.\n"
-                "Desglosa el texto en segmentos JSON (narrador vs personajes), género vocal y emoción.\n"
-                "Devuelve EXCLUSIVAMENTE JSON válido con characters y segments."
+                "Razona los interlocutores dentro de <thinking>...</thinking> y luego desglosa el texto en segmentos JSON (narrador vs personajes), género vocal y emoción.\n"
+                "Fuera de <thinking>, devuelve EXCLUSIVAMENTE JSON válido con characters y segments."
             ),
             user_template="Texto dramático a analizar:\n\n{text}",
+            is_builtin=True,
+        )
+
+        self.modes["builtin_trailer_script"] = PromptItem(
+            id="builtin_trailer_script",
+            category="mode",
+            mode_key="trailer_script",
+            name="Guion de Audio-Trailer Cinematográfico (90 Segundos)",
+            description="Genera un guion promocional de alto impacto de 60 a 90 segundos con gancho dramático, pausas, inflexiones y efectos Foley SFX.",
+            system_prompt=(
+                "Eres el Principal Movie & Audiobook Trailer Scriptwriter.\n"
+                "Diseña en <thinking>...</thinking> el arco dramático (Hook, Conflicto, Clímax y Cierre) y luego redacta un guion de Audio-Trailer de 130 a 190 palabras con etiquetas [pausa:1s], [enfasis], [susurro], [misterioso] y efectos [sfx:latido], [sfx:trueno], [sfx:reloj].\n"
+                "Fuera de <thinking>, entrega únicamente el guion locutable."
+            ),
+            user_template="Título de la Obra: {title}\nEstilo: {style_name}\n\nExtracto:\n{text}",
+            is_builtin=True,
+        )
+
+        self.modes["builtin_sfx_director"] = PromptItem(
+            id="builtin_sfx_director",
+            category="mode",
+            mode_key="sfx_director",
+            name="Dirección de Paisaje Sonoro y Efectos Foley SFX",
+            description="Analiza las acciones físicas y atmósfera del texto e inyecta marcadores [sfx:...] e inflexiones vocales sin alterar las palabras.",
+            system_prompt=(
+                "Eres el Master Foley Artist & Acoustic Soundscape Director de GlobalTTS.\n"
+                "Analiza en <thinking>...</thinking> los momentos físicos o ambientales clave e inyecta marcadores [sfx:trueno], [sfx:puerta], [sfx:pasos], [sfx:lluvia], [sfx:fuego], [sfx:viento], [sfx:campana], [sfx:espada], [sfx:explosion], [sfx:latido], [sfx:reloj] e inflexiones [suspiro], [jadeo], [risa], [pausa_dramatica] sin modificar las palabras del autor.\n"
+                "Fuera de <thinking>, entrega únicamente el texto enriquecido."
+            ),
+            user_template="Texto para dirección de efectos Foley SFX:\n\n{text}",
             is_builtin=True,
         )
 
@@ -332,14 +384,20 @@ class PromptLibrary:
         return list(self.modes.values())
 
     def get_mode_keys(self) -> List[str]:
-        """Retorna las claves únicas de modo ("enhance", "rewrite", "translate", "dialogue_analysis")."""
-        return ["enhance", "rewrite", "translate", "dialogue_analysis"]
+        """Retorna las claves únicas de modo disponibles en el estudio."""
+        return [
+            "enhance",
+            "rewrite",
+            "translate",
+            "dialogue_analysis",
+            "trailer_script",
+            "sfx_director",
+        ]
 
     def get_mode_prompt(self, mode_key: str) -> Optional[PromptItem]:
         """Obtiene el PromptItem activo para un modo específico."""
         active_id = self.active_configuration.get(mode_key)
         if active_id:
-            # Buscar en custom o en modes
             if active_id in self.custom_prompts:
                 return self.custom_prompts[active_id]
             if active_id in self.modes:
@@ -388,7 +446,7 @@ class PromptLibrary:
     # Gestión de Prompts Personalizados / Duplicación
     # ==========================================
     def get_prompt(self, prompt_id: str) -> Optional[PromptItem]:
-        """Busca un prompt por ID en modos, estilos o custom."""
+        """Busca un prompt por ID en modos o custom."""
         if prompt_id in self.modes:
             return self.modes[prompt_id]
         if prompt_id in self.custom_prompts:
@@ -449,7 +507,6 @@ class PromptLibrary:
 
         if prompt_id in self.custom_prompts:
             del self.custom_prompts[prompt_id]
-            # Si era el activo en algún modo, revertir a default
             for k, active_id in list(self.active_configuration.items()):
                 if active_id == prompt_id:
                     self.active_configuration[k] = f"builtin_{k}"
@@ -538,6 +595,8 @@ class PromptLibrary:
                         parameters=params,
                         is_builtin=True,
                     )
+                if m_key not in self.active_configuration:
+                    self.active_configuration[m_key] = m_id
                 updated_count += 1
 
         # 2. Parsear Estilos Narrativos (Sección 4)
@@ -554,6 +613,10 @@ class PromptLibrary:
             cad_m = re.search(r"-\s+\*\*Cadencia:\*\*\s+(.+)", block)
             voc_m = re.search(r"-\s+\*\*Perfil de Vocabulario:\*\*\s+(.+)", block)
             pros_m = re.search(r"-\s+\*\*Guía Prosódica:\*\*\s+(.+)", block)
+            acoust_m = re.search(
+                r"-\s+\*\*Perfil Acústico:\*\*\s*speed=([0-9.]+)x\s*\|\s*gain=([+-]?[0-9.]+)dB\s*\|\s*pause=([0-9.]+)x",
+                block,
+            )
 
             addon_blocks = re.findall(r"```(?:\w+)?\n([\s\S]*?)```", block)
             sys_addon = addon_blocks[0].strip() if addon_blocks else ""
@@ -564,6 +627,14 @@ class PromptLibrary:
             s_voc = voc_m.group(1).strip() if voc_m else ""
             s_pros = pros_m.group(1).strip() if pros_m else ""
 
+            def_spd, def_gain, def_pse = STYLE_ACOUSTIC_DEFAULTS.get(s_id, (1.0, 0.0, 1.0))
+            if acoust_m:
+                s_spd = float(acoust_m.group(1))
+                s_gain = float(acoust_m.group(2))
+                s_pse = float(acoust_m.group(3))
+            else:
+                s_spd, s_gain, s_pse = def_spd, def_gain, def_pse
+
             if s_id in self.styles:
                 style_item = self.styles[s_id]
                 style_item.name = s_name
@@ -571,6 +642,10 @@ class PromptLibrary:
                 style_item.cadence = s_cad
                 style_item.vocabulary_profile = s_voc
                 style_item.prosody_guidance = s_pros
+                if acoust_m:
+                    style_item.speed_multiplier = s_spd
+                    style_item.gain_db = s_gain
+                    style_item.pause_multiplier = s_pse
                 if sys_addon:
                     style_item.system_prompt_addon = sys_addon
             else:
@@ -582,6 +657,9 @@ class PromptLibrary:
                     vocabulary_profile=s_voc,
                     prosody_guidance=s_pros,
                     system_prompt_addon=sys_addon,
+                    speed_multiplier=s_spd,
+                    gain_db=s_gain,
+                    pause_multiplier=s_pse,
                 )
             updated_count += 1
 
@@ -606,58 +684,84 @@ class PromptLibrary:
             "",
             "## 1. Contexto de Arquitectura para Agentes e Ingenieros de Prompts",
             "",
-            "Este documento define la configuración operativa, los *System Prompts*, los esquemas de *Meta-Prompting* y los parámetros de hiperajuste para el pipeline de inteligencia artificial local de **GlobalTTS**.",
+            "Este documento define la configuración operativa, los *System Prompts*, los esquemas de *Meta-Prompting* (CO-STAR + XML `<thinking>`) y los perfiles acústicos para el pipeline de inteligencia artificial local de **GlobalTTS**.",
             "",
             "Cualquier agente inteligente o desarrollador que consulte este documento debe comprender el pipeline técnico:",
             "",
             "```",
-            "[ Texto Original ] ",
+            "[ Texto Original / Libro / URL / OCR ] ",
             "       │",
             "       ▼",
-            "[ Preprocesamiento & Limpieza Fonética (text_clean.py) ]",
+            "[ Preprocesamiento, Diccionario Fonético & Limpieza (text_clean.py) ]",
             "       │",
             "       ▼",
-            "[ Mistral NeMo 12B Local (Ollama - Context 4096) ]",
-            "       │  ├── Modo Enhance: Inyección de tags prosódicos sin cambiar texto",
-            "       │  ├── Modo Rewrite: Reescritura narrativa en 13 estilos CO-STAR",
-            "       │  ├── Modo Translate: Adaptación a español latino neutro (es-LA)",
-            "       │  └── Modo Dialogue: Auto-casting dramático narrador vs personajes",
+            "[ Mistral NeMo 12B Local (Ollama - Context 4096 - Scratchpad <thinking>) ]",
+            "       │  ├── Modo 1 (enhance): Dirección prosódica, pausas e inflexiones vocales",
+            "       │  ├── Modo 2 (rewrite): Reescritura narrativa en 16 estilos CO-STAR",
+            "       │  ├── Modo 3 (translate): Adaptación fono-acústica a español neutro (es-LA)",
+            "       │  ├── Modo 4 (dialogue_analysis): Auto-casting multivoz narrador vs personajes",
+            "       │  ├── Modo 5 (trailer_script): Guion de Audio-Trailer promocional 90s",
+            "       │  └── Modo 6 (sfx_director): Dirección de paisaje sonoro y efectos Foley SFX",
             "       │",
             "       ▼",
-            "[ Intérprete Fonético & Segmentador de Cláusulas (markup/parser.py) ]",
+            "[ Intérprete Fonético, Inflexiones & Síntesis Foley SFX (markup/parser.py + sfx_engine.py) ]",
             "       │",
             "       ▼",
             "[ Motor Dual Kokoro Neural (24kHz) + Piper VITS (piper_engine.py) ]",
             "       │",
             "       ▼",
-            "[ Normalización EBU R128 / Empaquetado MP3 256k & Video Karaoke MP4 ]",
+            "[ Mezcla Auto-Ducking BGM / Mastering EBU R128 / M4B / EPUB3 / Video Karaoke MP4 ]",
             "```",
             "",
             "### Reglas Críticas para la Modificación de Prompts por Agentes:",
-            "1. **Cero Texto Conversacional:** Los prompts deben obligar al modelo a entregar **únicamente** el texto transformado. Queda estrictamente prohibido que el modelo genere preámbulos, saludos, comentarios o despedidas (\"Aquí tienes tu texto:\", \"Espero que te guste:\", etc.).",
-            "2. **Preservación Estricta de Etiquetas:** Las etiquetas de rango (`[lento]...[/lento]`, `[susurro]...[/susurro]`) deben estar correctamente balanceadas. Las etiquetas de punto (`[pausa:1s]`, `[pausa:500ms]`) no llevan cierre.",
-            "3. **Fidelidad Semántica:** En el modo `enhance`, está prohibido añadir o eliminar palabras. En el modo `rewrite`, los hechos, cronología y nombres propios deben mantenerse invariables.",
+            "1. **Scratchpad Cognitivo `<thinking>` + Cero Texto Conversacional:** Todos los prompts obligan al modelo a razonar su estrategia dentro de `<thinking>...</thinking>` (el motor `MistralNeMoEnhancer._clean_llm_output` lo filtra automáticamente) y entregar fuera de él **únicamente** el texto transformado o JSON. Queda prohibido que el modelo genere saludos o comentarios.",
+            "2. **Preservación Estricta de Etiquetas:** Las etiquetas de rango (`[lento]...[/lento]`, `[susurro]...[/susurro]`, `[voz:ID]...[/voz]`, `[estilo:ID]...[/estilo]`) deben estar correctamente balanceadas. Las etiquetas de punto (`[pausa:1s]`, `[risa]`, `[suspiro]`, `[jadeo]`, `[pausa_dramatica]`, `[sfx:...]`) no llevan cierre.",
+            "3. **Fidelidad Semántica:** En los modos `enhance` y `sfx_director`, está prohibido añadir o eliminar palabras del autor. En el modo `rewrite`, los hechos, cronología y nombres propios deben mantenerse invariables.",
             "4. **Sincronización Bidireccional:** Cualquier edición realizada en este documento se sincroniza automáticamente con el archivo [`src/ai/prompts_master.json`](file:///c:/antigravityAS/GlobalTTS/src/ai/prompts_master.json) y se refleja en caliente en la interfaz de usuario de GlobalTTS.",
             "",
             "---",
             "",
-            "## 2. Etiquetas Prosódicas y Fonéticas Soportadas por el Motor TTS",
+            "## 2. Etiquetas Prosódicas, Vocales, Multivoz y Foley SFX Soportadas por el Motor TTS",
+            "",
+            "### 2.1 Etiquetas de Pausa, Velocidad y Emoción",
             "",
             "| Etiqueta | Tipo | Función Sonora | Ejemplo de Uso |",
             "| :--- | :--- | :--- | :--- |",
             "| `[pausa:1s]` | Punto | Silencio dramático de 1.0 segundo | `La puerta se abrió lentamente. [pausa:1s] No había nadie.` |",
             "| `[pausa:500ms]` | Punto | Respiración o inflexión de medio segundo | `Miró a su alrededor, [pausa:500ms] dudando si avanzar.` |",
             "| `[pausa:300ms]` | Punto | Micropausa de cadencia rítmica | `Era verdad; [pausa:300ms] lo sabía muy bien.` |",
+            "| `[pausa_dramatica]` | Punto | Silencio tenso de 1.2 segundos para clímax | `Y entonces reveló el nombre del culpable: [pausa_dramatica] era su propio hermano.` |",
+            "| `[risa]` | Punto | Inflexión vocal de risa breve con pausa | `—¿De verdad creíste eso? [risa] Qué ingenuo eres.` |",
+            "| `[suspiro]` | Punto | Exhalación / alivio / melancolía con pausa | `[suspiro] Al fin había terminado aquella larga espera.` |",
+            "| `[jadeo]` | Punto | Inhalación súbita de sorpresa o agotamiento | `[jadeo] ¡Detente ahí mismo, no des un paso más!` |",
             "| `[lento]...[/lento]` | Rango | Reduce la velocidad al 75% | `[lento]El tiempo parecía haberse detenido en la sala.[/lento]` |",
             "| `[rapido]...[/rapido]` | Rango | Aumenta la velocidad al 130% | `[rapido]¡Corre, antes de que sea demasiado tarde![/rapido]` |",
-            "| `[susurro]...[/susurro]` | Rango | Modulación de baja amplitud e intimidad | `[susurro]No hagas ningún ruido, nos están buscando.[/susurro]` |",
-            "| `[enfasis]...[/enfasis]` | Rango | Realce de intensidad y claridad fonética | `Esa fue [enfasis]la única vez[/enfasis] que volvieron a verlo.` |",
+            "| `[susurro]...[/susurro]` | Rango | Modulación de baja amplitud (-9dB) e intimidad | `[susurro]No hagas ningún ruido, nos están buscando.[/susurro]` |",
+            "| `[enfasis]...[/enfasis]` | Rango | Realce de intensidad (+3.5dB) y claridad fonética | `Esa fue [enfasis]la única vez[/enfasis] que volvieron a verlo.` |",
             "| `[misterioso]...[/misterioso]` | Rango | Atmósfera tensa, sombría y pausada | `[misterioso]Bajo las sombras del bosque, algo se movía.[/misterioso]` |",
             "| `[alegre]...[/alegre]` | Rango | Tono brillante, ritmo ágil y ascendente | `[alegre]¡Por fin lo hemos conseguido todos juntos![/alegre]` |",
             "| `[triste]...[/triste]` | Rango | Cadencia descendente y melancólica | `[triste]Ya nada volvió a ser como en aquellos días.[/triste]` |",
             "| `[serio]...[/serio]` | Rango | Solemnidad, firmeza y peso institucional | `[serio]El dictamen final fue inapelable y contundente.[/serio]` |",
             "| `[emocionado]...[/emocionado]` | Rango | Intensidad dramática y vibración vocal | `[emocionado]¡El descubrimiento cambiará el rumbo de la ciencia![/emocionado]` |",
-            "| `[enojado]...[/enojado]` | Rango | Golpe seco, ritmo tajante y firme | `[enojado]¡Basta de excusas inútiles, quiero resultados![/enojado]` |",
+            "| `[enojado]...[/enojado]` | Rango | Golpe seco (+4dB), ritmo tajante y firme | `[enojado]¡Basta de excusas inútiles, quiero resultados![/enojado]` |",
+            "",
+            "### 2.2 Etiquetas de Efectos Sonoros Foley SFX (`[sfx:...]`) y Multivoz (`[voz:...]`) ",
+            "",
+            "| Etiqueta | Tipo | Función Acústica DSP (`sfx_engine.py` / `parser.py`) | Ejemplo de Uso |",
+            "| :--- | :--- | :--- | :--- |",
+            "| `[sfx:trueno]` | Punto | Retumbo de tormenta con descarga eléctrica (2.4s) | `[sfx:trueno] El cielo se partió en dos sobre el castillo.` |",
+            "| `[sfx:lluvia]` | Punto | Ambiente de lluvia densa sobre cristal (2.5s) | `[sfx:lluvia] Afuera, el aguacero no daba tregua.` |",
+            "| `[sfx:puerta]` | Punto | Chirrido de bisagra y golpe seco de madera (1.1s) | `[sfx:puerta] Entró sin pedir permiso en el despacho.` |",
+            "| `[sfx:pasos]` | Punto | Secuencia de 4 pisadas resonantes en madera (1.6s) | `[sfx:pasos] Alguien se acercaba por el pasillo oscuro.` |",
+            "| `[sfx:fuego]` | Punto | Crepitar cálido de hoguera o chimenea (2.2s) | `[sfx:fuego] Las brasas iluminaban los rostros cansados.` |",
+            "| `[sfx:viento]` | Punto | Ráfaga sibilante de viento frío (2.5s) | `[sfx:viento] En la cumbre apenas se podía respirar.` |",
+            "| `[sfx:campana]` | Punto | Tañido metálico armónico de campana (2.0s) | `[sfx:campana] La medianoche resonó en toda la plaza.` |",
+            "| `[sfx:espada]` | Punto | Desenvaine y choque metálico de acero (0.9s) | `[sfx:espada] Los aceros se cruzaron en la penumbra.` |",
+            "| `[sfx:explosion]` | Punto | Detonación grave de impacto con onda expansiva (2.2s) | `[sfx:explosion] El reactor cedió con un estruendo colosal.` |",
+            "| `[sfx:latido]` | Punto | Doble pulso cardíaco profundo de tensión (1.6s) | `[sfx:latido] Su corazón golpeaba contra las costillas.` |",
+            "| `[sfx:reloj]` | Punto | Tic-tac mecánico de cuenta regresiva (1.6s) | `[sfx:reloj] Quedaban menos de treinta segundos.` |",
+            "| `[voz:ID_VOZ]...[/voz]` | Rango | Cambia dinámicamente el actor neural del pasaje | `[voz:kokoro-es_EM-alex-neural]—Yo me encargaré de eso.[/voz]` |",
+            "| `[estilo:ID_ESTILO]...[/estilo]` | Rango | Aplica el perfil acústico de cualquiera de los 16 estilos | `[estilo:terror_psicologico]No mires detrás de ti.[/estilo]` |",
             "",
             "---",
             "",
@@ -692,7 +796,7 @@ class PromptLibrary:
             mode_num += 1
 
         lines.extend([
-            "## 4. Catálogo de Estilos Narrativos Industriales",
+            "## 4. Catálogo de Estilos Narrativos Industriales (16 Perfiles CO-STAR & DSP)",
             ""
         ])
 
@@ -705,6 +809,7 @@ class PromptLibrary:
                 f"- **Cadencia:** {style.cadence}",
                 f"- **Perfil de Vocabulario:** {style.vocabulary_profile}",
                 f"- **Guía Prosódica:** {style.prosody_guidance}",
+                f"- **Perfil Acústico:** speed={style.speed_multiplier:.2f}x | gain={style.gain_db:+.1f}dB | pause={style.pause_multiplier:.2f}x",
                 "- **Addon del System Prompt:**",
                 "```",
                 style.system_prompt_addon,
@@ -800,7 +905,7 @@ class PromptLibrary:
         if not style_def:
             style_def = self.get_style("cuento") or NarrativeStyleDef(
                 id="cuento",
-                name="Cuento Literario",
+                name="Cuento Literario Clásico",
                 tone="Cálido y cautivador",
                 cadence="Pausada",
                 vocabulary_profile="Literario refinado",

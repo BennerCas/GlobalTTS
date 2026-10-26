@@ -2,10 +2,12 @@
 
 Aplica Meta-Prompting estructurado (CO-STAR, <thinking>, reglas duras) y se apoya
 en la biblioteca persistente de prompts maestros (PromptLibrary):
-1. Enriquecimiento prosódico: Inyección de etiquetas de voz ([pausa], [lento], [susurro], [énfasis]).
-2. Reescritura narrativa en 11 estilos de catálogo industrial (cuento, terror, épico, ensayo, etc.).
-3. Traducción y adaptación literaria a español latinoamericano (es-LA).
-4. Detección y clasificación dramática de diálogos para auto-casting multivoz.
+1. Enriquecimiento prosódico (enhance): Inyección de etiquetas de voz, pausas e inflexiones.
+2. Reescritura narrativa (rewrite): Adaptación en 16 estilos del catálogo industrial CO-STAR.
+3. Traducción y adaptación literaria (translate): Español latinoamericano neutro (es-LA).
+4. Detección y clasificación dramática de diálogos (dialogue_analysis): Auto-casting multivoz.
+5. Guion de Audio-Trailer Cinematográfico 90s (trailer_script): Avance promocional con SFX.
+6. Dirección de Paisaje Sonoro y Efectos Foley SFX (sfx_director): Inyección de [sfx:...].
 """
 from __future__ import annotations
 
@@ -29,10 +31,10 @@ DEFAULT_NEMO_MODEL = "mistral-nemo-local:latest"
 class NarrationConfig:
     """Configuración de narración y análisis con IA."""
     enabled: bool = False
-    mode: str = "enhance"  # "enhance", "rewrite", "translate", "dialogue_analysis"
+    mode: str = "enhance"  # "enhance", "rewrite", "translate", "dialogue_analysis", "trailer_script", "sfx_director"
     persona: str = "3ra"   # "1ra", "2da", "3ra"
     tense: str = "pasado"  # "pasado", "presente", "presente_continuo", "futuro"
-    style: str = "cuento"  # 11 estilos disponibles en catálogo CO-STAR
+    style: str = "cuento"  # 16 estilos disponibles en catálogo CO-STAR
     prompt_id: Optional[str] = None
     custom_system_prompt: Optional[str] = None
     custom_template: Optional[str] = None
@@ -241,7 +243,6 @@ class MistralNeMoEnhancer:
                 top_p=params.get("top_p", 0.9),
                 num_ctx=params.get("num_ctx", 4096),
             )
-            # Intentar parsear como JSON
             data = json.loads(raw_output)
             if isinstance(data, dict) and "segments" in data:
                 return data
@@ -250,23 +251,24 @@ class MistralNeMoEnhancer:
             logger.warning("Fallo en análisis de diálogos con NeMo: %s. Usando segmentación fallback.", e)
             return fallback
 
-    def generate_synopsis_trailer_script(self, text: str, title: str = "Obra Maestra", style: str = "epico") -> str:
-        """Genera un guion de Audio-Trailer dramático (60-90s) con etiquetas prosódicas y Foley."""
+    def generate_synopsis_trailer_script(
+        self,
+        text: str,
+        title: str = "Obra Maestra",
+        style: str = "epico",
+        prompt_id: Optional[str] = None,
+    ) -> str:
+        """Genera un guion de Audio-Trailer dramático (60-90s) usando el modo maestro trailer_script."""
         sample = text.strip()[:5500]
         if not sample:
-            return f"[sfx:transicion] [enfasis]{title}.[/enfasis] [pausa:0.8s] Una producción de GlobalTTS Studio."
+            return f"[sfx:campana] [enfasis]{title}.[/enfasis] [pausa:0.8s] Una producción de GlobalTTS Studio."
 
-        sys_prompt = (
-            "Eres un Director de Trailers Cinematográficos y Productor Ejecutivo de Audible. "
-            "Usa <thinking>...</thinking> para identificar el gancho central, el conflicto y el clímax del texto, "
-            "y luego redacta ÚNICAMENTE un guion de Audio-Trailer en español de entre 80 y 140 palabras "
-            "con etiquetas prosódicas ([pausa:0.8s], [misterioso]...[/misterioso], [enfasis]...[/enfasis], "
-            "[lento]...[/lento], [sfx:transicion], [sfx:latido], [sfx:campana]). Prohibido incluir preámbulos."
-        )
-        user_prompt = (
-            f"TÍTULO DE LA OBRA: {title}\nESTILO: {style}\n\n"
-            f"FRAGMENTO DE LA OBRA:\n{sample}\n\n"
-            "Redacta el guion del Audio-Trailer promocional listo para locución profesional:"
+        sys_prompt, user_prompt, params = self.library.build_prompt_for_mode(
+            mode="trailer_script",
+            text=sample,
+            style=style,
+            prompt_id=prompt_id,
+            title=title,
         )
 
         if self.is_available():
@@ -274,13 +276,13 @@ class MistralNeMoEnhancer:
                 script = self._call_ollama(
                     prompt=user_prompt,
                     system_prompt=sys_prompt,
-                    temperature=0.5,
-                    top_p=0.9,
-                    num_ctx=4096,
+                    temperature=params.get("temperature", 0.65),
+                    top_p=params.get("top_p", 0.9),
+                    num_ctx=params.get("num_ctx", 4096),
                 )
                 if script and len(script.split()) >= 20:
                     if "[sfx:" not in script.lower():
-                        script = f"[sfx:transicion] {script}"
+                        script = f"[sfx:campana] {script}"
                     return script
             except Exception as exc:
                 logger.warning("Aviso en generación de trailer con NeMo: %s. Usando motor extractivo.", exc)
@@ -290,12 +292,40 @@ class MistralNeMoEnhancer:
         hook = sentences[0] if sentences else sample[:180]
         climax = sentences[min(2, len(sentences) - 1)] if len(sentences) > 1 else ""
         return (
-            f"[sfx:transicion] [misterioso]En un mundo donde cada palabra guarda un destino...[/misterioso] "
+            f"[sfx:viento] [misterioso]En un mundo donde cada palabra guarda un destino...[/misterioso] "
             f"[pausa:0.7s] [enfasis]{title}.[/enfasis] [pausa:0.6s] "
             f"{hook} [pausa:0.8s] "
             f"{f'[lento]{climax}[/lento] [pausa:0.8s] ' if climax else ''}"
             f"[sfx:campana] [enfasis]Descubre la experiencia completa en esta edición magistral de GlobalTTS Studio.[/enfasis]"
         )
+
+    def direct_sfx_and_soundscape(self, text: str, prompt_id: Optional[str] = None) -> str:
+        """Analiza el texto e inyecta marcadores de efectos Foley [sfx:...] e inflexiones sin alterar palabras."""
+        if not text.strip():
+            return text
+
+        sys_prompt, user_prompt, params = self.library.build_prompt_for_mode(
+            mode="sfx_director",
+            text=text,
+            prompt_id=prompt_id,
+        )
+
+        if self.is_available():
+            try:
+                directed = self._call_ollama(
+                    prompt=user_prompt,
+                    system_prompt=sys_prompt,
+                    temperature=params.get("temperature", 0.25),
+                    top_p=params.get("top_p", 0.85),
+                    num_ctx=params.get("num_ctx", 4096),
+                )
+                if directed:
+                    return directed
+            except Exception as exc:
+                logger.warning("Aviso en dirección SFX con NeMo: %s. Usando inyector semántico determinista.", exc)
+
+        from src.audio.sfx_engine import inject_semantic_sfx_tags
+        return inject_semantic_sfx_tags(text)
 
     def process(self, text: str, config: NarrationConfig) -> Union[str, Dict[str, Any]]:
         """Método de despacho unificado según la configuración de narración."""
@@ -314,5 +344,13 @@ class MistralNeMoEnhancer:
             )
         elif mode == "dialogue_analysis":
             return self.analyze_dialogues(text, prompt_id=config.prompt_id)
+        elif mode == "trailer_script":
+            return self.generate_synopsis_trailer_script(
+                text,
+                style=config.style,
+                prompt_id=config.prompt_id,
+            )
+        elif mode == "sfx_director":
+            return self.direct_sfx_and_soundscape(text, prompt_id=config.prompt_id)
         else:
             return self.enhance_expressiveness(text, prompt_id=config.prompt_id)

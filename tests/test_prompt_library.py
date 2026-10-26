@@ -1,12 +1,12 @@
 """Tests unitarios exhaustivos para el Gestor de Prompts Maestros,
 
-Estilos Narrativos CO-STAR y Cliente de Inferencia Mistral NeMo.
+Estilos Narrativos CO-STAR (16 perfiles) y Cliente de Inferencia Mistral NeMo (6 modos).
 """
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -29,19 +29,15 @@ def test_catalog_contains_all_required_modes(temp_library: PromptLibrary):
     modes = temp_library.list_modes()
     mode_keys = [m.mode_key for m in modes]
 
-    assert "enhance" in mode_keys
-    assert "rewrite" in mode_keys
-    assert "translate" in mode_keys
-    assert "dialogue_analysis" in mode_keys
-
-    # Verificar que el active_configuration apunte a los identificadores correctos
-    assert temp_library.get_active_prompt_id("enhance") == "builtin_enhance"
-    assert temp_library.get_active_prompt_id("rewrite") == "builtin_rewrite"
-    assert temp_library.get_active_prompt_id("translate") == "builtin_translate"
-    assert temp_library.get_active_prompt_id("dialogue_analysis") == "builtin_dialogue_analysis"
+    for key in ("enhance", "rewrite", "translate", "dialogue_analysis", "trailer_script", "sfx_director"):
+        assert key in mode_keys, f"Modo requerido faltante: {key}"
+        assert temp_library.get_active_prompt_id(key) == f"builtin_{key}"
+        prompt_item = temp_library.get_mode_prompt(key)
+        assert prompt_item is not None
+        assert "<thinking>" in prompt_item.system_prompt
 
 
-def test_catalog_contains_all_11_narrative_styles(temp_library: PromptLibrary):
+def test_catalog_contains_all_16_narrative_styles(temp_library: PromptLibrary):
     expected_styles = [
         "cuento",
         "historia",
@@ -56,6 +52,9 @@ def test_catalog_contains_all_11_narrative_styles(temp_library: PromptLibrary):
         "oratoria_motivacional",
         "cuentacuentos",
         "locutor_radio",
+        "true_crime_documental",
+        "podcast_conversacional",
+        "institucional_corporativo",
     ]
 
     registered_styles = temp_library.list_style_keys()
@@ -68,6 +67,9 @@ def test_catalog_contains_all_11_narrative_styles(temp_library: PromptLibrary):
         assert style_def.cadence
         assert style_def.vocabulary_profile
         assert style_def.prosody_guidance
+        assert 0.5 <= style_def.speed_multiplier <= 1.5
+        assert -5.0 <= style_def.gain_db <= 5.0
+        assert 0.5 <= style_def.pause_multiplier <= 2.5
         # Verificar que tiene el framework CO-STAR
         assert "context" in style_def.costar_framework or "style" in style_def.costar_framework
 
@@ -139,8 +141,8 @@ def test_prompt_library_reset_to_defaults(temp_library: PromptLibrary):
     # Resetear
     temp_library.reset_to_defaults()
     assert temp_library.get_prompt("temp_item") is None
-    assert len(temp_library.list_modes()) == 4
-    assert len(temp_library.list_styles()) >= 11
+    assert len(temp_library.list_modes()) == 6
+    assert len(temp_library.list_styles()) >= 16
 
 
 def test_safe_format_and_interpolation(temp_library: PromptLibrary):
@@ -211,7 +213,14 @@ def test_nemo_enhancer_methods_with_mock():
         assert analysis["characters"][0]["name"] == "Guardia"
         assert analysis["segments"][0]["emotion"] == "enojado"
 
-    # 5. Fallback seguro ante fallo de JSON en dialogue_analysis
+    # 5. Dirección de Efectos Foley SFX (sfx_director)
+    with patch.object(enhancer, "is_available", return_value=True), patch.object(
+        enhancer, "_call_ollama", return_value="[sfx:trueno] La tormenta azotó la ventana."
+    ):
+        sfx_res = enhancer.direct_sfx_and_soundscape("La tormenta azotó la ventana.")
+        assert "[sfx:trueno]" in sfx_res
+
+    # 6. Fallback seguro ante fallo de JSON en dialogue_analysis
     with patch.object(enhancer, "_call_ollama", return_value="Respuesta no JSON inválida"):
         fallback_res = enhancer.analyze_dialogues("Texto sin formato")
         assert "characters" in fallback_res
@@ -230,19 +239,22 @@ def test_prompt_library_markdown_roundtrip(tmp_path: Path):
     content = md_path.read_text(encoding="utf-8")
     assert "Catálogo Maestro de Modos de IA" in content
     assert "Estilos Narrativos Industriales" in content
+    assert "Perfil Acústico:" in content
 
-    # Crear una nueva librería vacía e importar desde el Markdown generado
+    # Crear una nueva librería e importar desde el Markdown generado
     json_path2 = tmp_path / "prompts_imported.json"
     lib2 = PromptLibrary(json_path=json_path2)
     # Modificar un parámetro antes de importar para comprobar sobreescritura
     lib2.modes["builtin_enhance"].parameters["temperature"] = 0.99
+    lib2.styles["terror_psicologico"].speed_multiplier = 1.40
 
     count = lib2.import_from_markdown(md_path)
-    assert count >= 15
-    # Comprobar que temperature se restauró al valor del markdown
-    assert lib2.modes["builtin_enhance"].parameters["temperature"] == 0.35
+    assert count == 22  # 6 modos + 16 estilos
+    # Comprobar que temperature y speed_multiplier se restauraron al valor del markdown
+    assert lib2.modes["builtin_enhance"].parameters["temperature"] == 0.25
+    assert lib2.styles["terror_psicologico"].speed_multiplier == 0.86
     assert len(lib2.styles) == len(lib1.styles)
-    assert lib2.get_style("terror_psicologico") is not None
+    assert lib2.get_style("true_crime_documental") is not None
 
 
 def test_nemo_enhancer_live_call_if_available():

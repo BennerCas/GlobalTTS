@@ -193,7 +193,7 @@ class AiEnhanceWorker(QThread):
     def run(self):
         try:
             enhancer = MistralNeMoEnhancer()
-            if not enhancer.is_available():
+            if not enhancer.is_available() and self.config.mode not in ("trailer_script", "sfx_director"):
                 self.error.emit("Ollama o el modelo Mistral NeMo local no están disponibles en http://localhost:11434.")
                 return
 
@@ -436,6 +436,8 @@ class QuickReaderTab(QWidget):
         self.combo_ai_mode.addItem("Modo Narrador (reescritura literaria oral)", "rewrite")
         self.combo_ai_mode.addItem("Traducción & Adaptación es-LA", "translate")
         self.combo_ai_mode.addItem("Análisis de Diálogos y Emociones", "dialogue_analysis")
+        self.combo_ai_mode.addItem("Guion de Audio-Trailer Promocional 90s", "trailer_script")
+        self.combo_ai_mode.addItem("Dirección de Efectos Foley SFX y Ambiente", "sfx_director")
         row1.addWidget(self.combo_ai_mode, stretch=1)
         ai_ctrl_lay.addLayout(row1)
 

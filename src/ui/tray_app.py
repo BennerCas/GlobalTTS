@@ -779,6 +779,8 @@ class MainWindow(QDialog):
         self.combo_ai_mode.addItem("Modo Narrador Completo (reescribe como historia/cuento oral)", "rewrite")
         self.combo_ai_mode.addItem("Traducción y Adaptación (a Español Neutro es-LA)", "translate")
         self.combo_ai_mode.addItem("Detección y Clasificación de Diálogos (Auto-Casting)", "dialogue_analysis")
+        self.combo_ai_mode.addItem("Guion de Audio-Trailer Cinematográfico (90s)", "trailer_script")
+        self.combo_ai_mode.addItem("Dirección de Paisaje Sonoro y Efectos Foley SFX", "sfx_director")
         ai_opt_lay.addRow("Modo de IA:", self.combo_ai_mode)
 
         row_params = QHBoxLayout()
@@ -1127,6 +1129,7 @@ class MainWindow(QDialog):
         self.combo_tense.setEnabled(checked)
 
     def refresh_styles_combo(self):
+        self.prompt_library.load()
         curr = self.combo_style.currentData() if self.combo_style.count() > 0 else "cuento"
         self.combo_style.clear()
         styles = self.prompt_library.list_styles()
@@ -1148,6 +1151,9 @@ class MainWindow(QDialog):
                     idx_s = st_combo.findData(c_st)
                     if idx_s >= 0:
                         st_combo.setCurrentIndex(idx_s)
+        if hasattr(self, "tab_quick") and hasattr(self.tab_quick, "refresh_styles_combo"):
+            self.tab_quick.prompt_library.load()
+            self.tab_quick.refresh_styles_combo()
 
     def open_prompt_manager(self):
         dlg = PromptManagerDialog(library=self.prompt_library, parent=self)

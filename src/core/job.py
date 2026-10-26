@@ -229,7 +229,7 @@ class AudiobookPipeline:
                             stext = seg.get("text", "").strip()
                             if not stext:
                                 continue
-                            spk = seg.get("speaker", "Narrador").strip()
+                            spk = (seg.get("speaker_name") or seg.get("speaker") or seg.get("speaker_id") or "Narrador").strip()
                             spk_lower = spk.lower()
                             if spk_lower not in char_map:
                                 req_gender = char_meta_gender.get(spk_lower, "neutral")
@@ -250,6 +250,15 @@ class AudiobookPipeline:
                                 stext = f"[voz:{v_assigned}]{stext}[/voz]"
                             seg_texts.append(stext)
                         processed = " ".join(seg_texts) if seg_texts else processed
+                    elif self.config.narration.mode == "sfx_director":
+                        processed = enhancer.direct_sfx_and_soundscape(processed, prompt_id=self.config.narration.prompt_id)
+                    elif self.config.narration.mode == "trailer_script":
+                        processed = enhancer.generate_synopsis_trailer_script(
+                            processed,
+                            title=doc_display_title,
+                            style=active_style,
+                            prompt_id=self.config.narration.prompt_id,
+                        )
                     else:
                         processed = enhancer.enhance_expressiveness(processed, prompt_id=self.config.narration.prompt_id)
 
