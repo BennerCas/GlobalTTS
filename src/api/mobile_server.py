@@ -256,7 +256,11 @@ class _StreamingRequestHandler(BaseHTTPRequestHandler):
         cards_html: list[str] = []
         if self.output_root.exists():
             projects = sorted(
-                [d for d in self.output_root.iterdir() if d.is_dir() and d.name != "covers"],
+                [
+                    d
+                    for d in self.output_root.iterdir()
+                    if d.is_dir() and d.name not in ("covers", "_ingesta_web", "historial_lecturas") and not d.name.startswith("_")
+                ],
                 key=lambda x: x.stat().st_mtime,
                 reverse=True,
             )
@@ -297,12 +301,40 @@ class _StreamingRequestHandler(BaseHTTPRequestHandler):
                     vu = f"/media/{urllib.parse.quote(proj.name)}/{urllib.parse.quote(mp4.name)}"
                     links.append(f'<a href="{vu}" target="_blank" style="color:#10b981;font-size:13px;">[ ► ] Ver Video Karaoke MP4</a>')
 
+                cap_dir = proj / "capitulos"
+                if cap_dir.exists():
+                    ch_mp3s = sorted(cap_dir.glob("*.mp3"))
+                    if ch_mp3s:
+                        ch_items = "".join(
+                            f'<li style="margin:4px 0;"><a href="/media/{urllib.parse.quote(proj.name)}/capitulos/{urllib.parse.quote(c.name)}" target="_blank" style="color:#94a3b8;font-size:12px;">{html.escape(c.stem.replace("_", " "))}</a></li>'
+                            for c in ch_mp3s
+                        )
+                        links.append(f'<details style="margin-top:8px;font-size:12px;color:#cbd5e1;"><summary style="cursor:pointer;color:#38bdf8;">Ver {len(ch_mp3s)} Capítulos Individuales</summary><ul style="margin:6px 0;padding-left:18px;">{ch_items}</ul></details>')
+
                 cards_html.append(
                     f'<div style="background:#111726;border:1px solid #1E293B;border-radius:10px;padding:16px;margin-bottom:14px;">'
                     f'<div style="font-weight:700;font-size:16px;color:#F8FAFC;">{html.escape(title)}</div>'
                     f'{"".join(links)}'
                     f"</div>"
                 )
+
+            # Incluir sección de Historial de Lecturas Rápidas si existen audios recientes
+            hist_dir = self.output_root / "historial_lecturas"
+            if hist_dir.exists():
+                hist_wavs = sorted(list(hist_dir.glob("*.wav")) + list(hist_dir.glob("*.mp3")), key=lambda p: p.stat().st_mtime, reverse=True)[:15]
+                if hist_wavs:
+                    h_rows = "".join(
+                        f'<div style="margin-top:8px;padding-top:6px;border-top:1px solid #1E293B;">'
+                        f'<div style="font-size:12px;color:#CBD5E1;margin-bottom:4px;">{html.escape(hw.stem)}</div>'
+                        f'<audio controls preload="none" src="/media/historial_lecturas/{urllib.parse.quote(hw.name)}" style="width:100%;height:32px;"></audio>'
+                        f"</div>"
+                        for hw in hist_wavs
+                    )
+                    cards_html.append(
+                        f'<div style="background:#0F172A;border:1px solid #1E293B;border-radius:10px;padding:16px;margin-bottom:14px;">'
+                        f'<div style="font-weight:700;font-size:15px;color:#38BDF8;">HISTORIAL DE LECTURAS RÁPIDAS RECIENTES</div>'
+                        f"{h_rows}</div>"
+                    )
 
         body = "".join(cards_html) or "<p style='color:#94A3B8;'>Aún no hay audiolibros generados en la biblioteca.</p>"
         page = f"""<!DOCTYPE html>

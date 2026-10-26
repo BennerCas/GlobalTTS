@@ -1019,7 +1019,7 @@ class MainWindow(QDialog):
     def select_custom_bgm(self):
         bgm, _ = QFileDialog.getOpenFileName(
             self,
-            "Seleccionar Pista Musical de Fondo (Auto-Ducking)",
+            "Seleccionar Pista Musical de Fondo (Auto-Ducking) — Cancela para desactivar BGM",
             "",
             "Audio (*.mp3 *.wav *.flac *.ogg)"
         )
@@ -1027,6 +1027,10 @@ class MainWindow(QDialog):
             self.custom_bgm_path = bgm
             self.btn_custom_bgm.setText(f"[✓] {Path(bgm).stem[:12]}")
             self.btn_custom_bgm.setToolTip(f"BGM Personalizado activo: {bgm}")
+        else:
+            self.custom_bgm_path = None
+            self.btn_custom_bgm.setText("[...] BGM")
+            self.btn_custom_bgm.setToolTip("Seleccionar pista musical personalizada (.mp3/.wav) con Auto-Ducking")
 
     def toggle_pause_batch(self):
         if not self.worker or not self.worker.isRunning():

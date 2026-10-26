@@ -428,12 +428,23 @@ class LibraryTab(QWidget):
     def setup_player_events(self):
         self.player.positionChanged.connect(self.on_position_changed)
         self.player.durationChanged.connect(self.on_duration_changed)
+        self.player.playbackStateChanged.connect(self.on_playback_state_changed)
+
+    def on_playback_state_changed(self, state: QMediaPlayer.PlaybackState):
+        if state == QMediaPlayer.PlaybackState.PlayingState:
+            self.btn_play.setText("[ || ] Pausa")
+        else:
+            self.btn_play.setText("[ ► ] Reproducir")
 
     def refresh_library(self):
         self.books = []
         if BIBLIOTECA_DIR.exists():
             for item in sorted(BIBLIOTECA_DIR.iterdir(), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True):
-                if item.is_dir() and item.name != "historial_lecturas":
+                if (
+                    item.is_dir()
+                    and item.name not in ("historial_lecturas", "_ingesta_web", "covers")
+                    and not item.name.startswith("_")
+                ):
                     meta_files = list(item.glob("*_metadata.json")) + list(item.glob("metadata.json"))
                     meta = {}
                     if meta_files:
@@ -450,6 +461,9 @@ class LibraryTab(QWidget):
                     flac_files = list(item.glob("*.flac")) + list(item.glob("*.wav"))
                     cover_files = list(item.glob("cover.*"))
                     srt_files = list(item.glob("*.srt"))
+
+                    if not (mp3_files or m4b_files or mp4_files or flac_files or meta_files):
+                        continue
 
                     self.books.append({
                         "folder": item,
@@ -707,6 +721,17 @@ class LibraryTab(QWidget):
 
         if trailer_p.exists():
             self.selected_book_data["trailer"] = trailer_p
+            idx_tr = self.combo_track.findData(str(trailer_p))
+            if idx_tr < 0:
+                self.combo_track.blockSignals(True)
+                self.combo_track.addItem("[ Trailer Promocional 90s ] trailer_sinopsis.mp3", str(trailer_p))
+                idx_tr = self.combo_track.count() - 1
+                self.combo_track.setCurrentIndex(idx_tr)
+                self.combo_track.blockSignals(False)
+            else:
+                self.combo_track.blockSignals(True)
+                self.combo_track.setCurrentIndex(idx_tr)
+                self.combo_track.blockSignals(False)
             self.player.setSource(QUrl.fromLocalFile(str(trailer_p)))
             self.player.play()
             self.btn_play.setText("[ || ] Pausa (Trailer)")
