@@ -184,11 +184,12 @@ class AiEnhanceWorker(QThread):
     finished = pyqtSignal(str, bool)
     error = pyqtSignal(str)
 
-    def __init__(self, text: str, config: NarrationConfig, auto_play: bool = False):
+    def __init__(self, text: str, config: NarrationConfig, auto_play: bool = False, primary_voice: str = "kokoro-ef_dora"):
         super().__init__()
         self.text = text
         self.config = config
         self.auto_play = auto_play
+        self.primary_voice = primary_voice or "kokoro-ef_dora"
 
     def run(self):
         try:
@@ -199,12 +200,36 @@ class AiEnhanceWorker(QThread):
 
             res = enhancer.process(self.text, self.config)
             if isinstance(res, dict):
+                v_profiles = list_available_piper_voices()
+                pool = [v for v in v_profiles.keys() if v != self.primary_voice]
+                char_meta_gender = {
+                    c.get("name", "").strip().lower(): c.get("gender", "neutral").lower()
+                    for c in res.get("characters", [])
+                    if isinstance(c, dict)
+                }
+                char_map: dict[str, str] = {"narrador": self.primary_voice}
                 seg_texts = []
                 for seg in res.get("segments", []):
-                    st = seg.get("text", "")
+                    st = seg.get("text", "").strip()
+                    if not st:
+                        continue
+                    spk = (seg.get("speaker_name") or seg.get("speaker") or seg.get("speaker_id") or "Narrador").strip()
+                    spk_lower = spk.lower()
+                    if spk_lower not in char_map:
+                        req_gender = char_meta_gender.get(spk_lower, "neutral")
+                        if req_gender in ("female", "male"):
+                            subpool = [v for v in pool if v_profiles.get(v) and v_profiles[v].gender == req_gender]
+                            chosen_v = subpool[(len(char_map) - 1) % len(subpool)] if subpool else (pool[(len(char_map) - 1) % len(pool)] if pool else self.primary_voice)
+                        else:
+                            chosen_v = pool[(len(char_map) - 1) % len(pool)] if pool else self.primary_voice
+                        char_map[spk_lower] = chosen_v
+                    v_assigned = char_map[spk_lower]
+
                     emo = seg.get("emotion")
                     if emo and emo not in ("neutral", ""):
                         st = f"[{emo}]{st}[/{emo}]"
+                    if v_assigned and v_assigned != self.primary_voice:
+                        st = f"[voz:{v_assigned}]{st}[/voz]"
                     seg_texts.append(st)
                 result_text = " ".join(seg_texts) if seg_texts else self.text
             else:
@@ -829,7 +854,8 @@ class QuickReaderTab(QWidget):
         self.lbl_status.setText("[ PROCESANDO ] Generando narración y prosodia con Mistral NeMo 12B local...")
         self.lbl_status.setStyleSheet("color: #a371f7; font-weight: 700; font-family: Consolas, monospace;")
 
-        self.ai_worker = AiEnhanceWorker(text, cfg, auto_play=auto_play)
+        voice_key = self.voice_combo.currentData() or "kokoro-ef_dora"
+        self.ai_worker = AiEnhanceWorker(text, cfg, auto_play=auto_play, primary_voice=voice_key)
         self.ai_worker.finished.connect(self.on_ai_finished)
         self.ai_worker.error.connect(self.on_ai_error)
         self.ai_worker.start()
