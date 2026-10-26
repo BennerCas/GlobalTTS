@@ -49,7 +49,7 @@ class PromptManagerWidget(QWidget):
 
     def set_orientation(self, mode: str):
         self.current_orientation = mode
-        if not hasattr(self, 'form_box_layout'):
+        if not hasattr(self, "form_box_layout"):
             return
 
         self.meta_frame.setParent(self.form_box)
@@ -82,7 +82,7 @@ class PromptManagerWidget(QWidget):
         header_lay = QVBoxLayout()
         title = QLabel("Catálogo Maestro de Prompts y Estilos Narrativos")
         title.setObjectName("titleLabel")
-        subtitle = QLabel("Ajusta los System Prompts bajo Meta-Prompting CO-STAR y parámetros de Mistral NeMo.")
+        subtitle = QLabel("Ajusta los System Prompts bajo Meta-Prompting CO-STAR, parámetros de Mistral NeMo y perfil acústico de estilos.")
         subtitle.setObjectName("subtitleLabel")
         header_lay.addWidget(title)
         header_lay.addWidget(subtitle)
@@ -162,6 +162,36 @@ class PromptManagerWidget(QWidget):
         params_row.addWidget(self.spin_ctx)
         params_row.addStretch()
         self.meta_lay.addRow("Parámetros IA:", params_row)
+
+        # Parámetros Acústicos del Estilo (Velocidad, Ganancia dB, Pausas)
+        acoustic_row = QHBoxLayout()
+        acoustic_row.setSpacing(6)
+        self.spin_style_speed = QDoubleSpinBox()
+        self.spin_style_speed.setRange(0.50, 1.80)
+        self.spin_style_speed.setSingleStep(0.02)
+        self.spin_style_speed.setValue(1.00)
+        self.spin_style_speed.setSuffix("x")
+
+        self.spin_style_gain = QDoubleSpinBox()
+        self.spin_style_gain.setRange(-12.0, 12.0)
+        self.spin_style_gain.setSingleStep(0.5)
+        self.spin_style_gain.setValue(0.0)
+        self.spin_style_gain.setSuffix(" dB")
+
+        self.spin_style_pause = QDoubleSpinBox()
+        self.spin_style_pause.setRange(0.40, 2.50)
+        self.spin_style_pause.setSingleStep(0.05)
+        self.spin_style_pause.setValue(1.00)
+        self.spin_style_pause.setSuffix("x")
+
+        acoustic_row.addWidget(QLabel("Velocidad:"))
+        acoustic_row.addWidget(self.spin_style_speed)
+        acoustic_row.addWidget(QLabel("Ganancia:"))
+        acoustic_row.addWidget(self.spin_style_gain)
+        acoustic_row.addWidget(QLabel("Pausas:"))
+        acoustic_row.addWidget(self.spin_style_pause)
+        acoustic_row.addStretch()
+        self.meta_lay.addRow("Acústica Estilo:", acoustic_row)
 
         # Panel derecho / inferior: Editor de System Prompt
         self.editor_frame = QFrame()
@@ -279,6 +309,13 @@ class PromptManagerWidget(QWidget):
             self.spin_topp.setEnabled(True)
             self.spin_ctx.setEnabled(True)
 
+            self.spin_style_speed.setValue(1.0)
+            self.spin_style_gain.setValue(0.0)
+            self.spin_style_pause.setValue(1.0)
+            self.spin_style_speed.setEnabled(False)
+            self.spin_style_gain.setEnabled(False)
+            self.spin_style_pause.setEnabled(False)
+
         elif cat == "style":
             style = self.library.get_style(item_id)
             if not style:
@@ -297,6 +334,13 @@ class PromptManagerWidget(QWidget):
             self.spin_topp.setEnabled(False)
             self.spin_ctx.setEnabled(False)
             self.btn_delete.setEnabled(False)
+
+            self.spin_style_speed.setValue(float(style.speed_multiplier))
+            self.spin_style_gain.setValue(float(style.gain_db))
+            self.spin_style_pause.setValue(float(style.pause_multiplier))
+            self.spin_style_speed.setEnabled(True)
+            self.spin_style_gain.setEnabled(True)
+            self.spin_style_pause.setEnabled(True)
 
     def _save_changes(self) -> None:
         """Guarda los cambios del formulario en la biblioteca y persiste a JSON."""
@@ -323,10 +367,13 @@ class PromptManagerWidget(QWidget):
                     self._current_id,
                     name=self.edit_name.text().strip(),
                     system_prompt_addon=self.edit_system.toPlainText(),
+                    speed_multiplier=round(self.spin_style_speed.value(), 2),
+                    gain_db=round(self.spin_style_gain.value(), 1),
+                    pause_multiplier=round(self.spin_style_pause.value(), 2),
                 )
 
             self.prompts_updated.emit()
-            QMessageBox.information(self, "Guardado Exitoso", "Prompt guardado correctamente en JSON.")
+            QMessageBox.information(self, "Guardado Exitoso", "Prompt y perfil acústico guardados correctamente en JSON.")
         except Exception as e:
             QMessageBox.critical(self, "Error al Guardar", f"No se pudo guardar el prompt: {e}")
 

@@ -502,6 +502,9 @@ class UrlIngestDialog(QDialog):
     def _confirm_import(self) -> None:
         url = self.txt_url.text().strip()
         body = self.txt_preview.toPlainText().strip()
+        if not body and url:
+            self._fetch_article()
+            body = self.txt_preview.toPlainText().strip()
         if not url and not body:
             QMessageBox.warning(self, "Sin Contenido", "Ingresa una URL o extrae el artículo primero.")
             return

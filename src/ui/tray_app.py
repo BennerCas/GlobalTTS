@@ -366,6 +366,18 @@ class MainWindow(QDialog):
         if idx >= 0:
             self.voice_combo.setCurrentIndex(idx)
         self.populate_voice_pool_table()
+        if hasattr(self, "table_cunas"):
+            for r in range(self.table_cunas.rowCount()):
+                v_combo = self.table_cunas.cellWidget(r, 2)
+                if isinstance(v_combo, QComboBox):
+                    c_vk = v_combo.currentData()
+                    v_combo.clear()
+                    for k, v in self.voices_dict.items():
+                        tag = "24k" if v.engine in ("kokoro", "cloned") else f"{v.sample_rate // 1000}k"
+                        v_combo.addItem(f"{v.name} [{tag}]", k)
+                    idx_v = v_combo.findData(c_vk)
+                    if idx_v >= 0:
+                        v_combo.setCurrentIndex(idx_v)
         if hasattr(self, "tab_quick") and hasattr(self.tab_quick, "populate_voices"):
             self.tab_quick.populate_voices()
 
@@ -440,15 +452,18 @@ class MainWindow(QDialog):
 
     def open_url_ingest_dialog(self):
         dlg = UrlIngestDialog(parent=self)
-        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.extracted_text:
-            # Guardar artículo extraído como archivo .txt listo para el lote
-            from src.ingest.loader import slugify
-            slug = slugify(dlg.extracted_title or "articulo_web")
-            ingest_dir = BIBLIOTECA_DIR / "_ingesta_web"
-            ingest_dir.mkdir(parents=True, exist_ok=True)
-            out_txt = ingest_dir / f"{slug}.txt"
-            out_txt.write_text(f"# {dlg.extracted_title}\n\n{dlg.extracted_text}", encoding="utf-8")
-            self.add_file_to_batch(str(out_txt))
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            if dlg.extracted_text:
+                # Guardar artículo extraído como archivo .txt listo para el lote
+                from src.core.text_clean import make_filename_slug
+                slug = make_filename_slug(dlg.extracted_title or "articulo_web")
+                ingest_dir = BIBLIOTECA_DIR / "_ingesta_web"
+                ingest_dir.mkdir(parents=True, exist_ok=True)
+                out_txt = ingest_dir / f"{slug}.txt"
+                out_txt.write_text(f"# {dlg.extracted_title}\n\n{dlg.extracted_text}", encoding="utf-8")
+                self.add_file_to_batch(str(out_txt))
+            elif dlg.extracted_url:
+                self.add_file_to_batch(dlg.extracted_url)
 
     def show_distribution_dialog(self, platform: str):
         folder = Path(self.last_results[-1].document_folder) if self.last_results else BIBLIOTECA_DIR

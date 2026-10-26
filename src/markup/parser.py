@@ -46,16 +46,33 @@ EFFECTS: dict[str, _Effect] = {
     "serio": _Effect(speed=0.95, instruct="habla en tono serio y solemne"),
     "misterioso": _Effect(speed=0.9, gain_db=-4.0, instruct="habla con tono misterioso y pausado"),
     "enojado": _Effect(speed=1.05, gain_db=3.0, instruct="habla con enojo contenido"),
+    # Estilos narrativos acústicos completos (11 estilos CO-STAR)
     "cuentacuentos": _Effect(speed=0.92, gain_db=0.5, instruct="narra con cadencia cálida de cuentacuentos teatral"),
     "locutor_radio": _Effect(speed=1.08, gain_db=2.0, instruct="locución radial dinámica, enérgica y proyectada"),
+    "terror": _Effect(speed=0.87, gain_db=-1.5, instruct="tono sombrío, tenso e inquietante de terror psicológico"),
+    "epico": _Effect(speed=0.95, gain_db=2.0, instruct="declamación solemne, heroica y resonante"),
+    "ciencia_ficcion": _Effect(speed=0.98, gain_db=0.5, instruct="cadencia analítica, nítida y futurista"),
+    "ensayo": _Effect(speed=0.96, gain_db=0.5, instruct="exposición reflexiva, didáctica y articulada"),
+    "historia": _Effect(speed=0.94, gain_db=1.0, instruct="crónica documental solemne y envolvente"),
+    "poesia": _Effect(speed=0.86, gain_db=-0.5, instruct="recitación lírica musical y contemplativa"),
+    "drama": _Effect(speed=0.91, gain_db=1.0, instruct="interpretación emotiva, intensa y profunda"),
+    "institucional": _Effect(speed=1.00, gain_db=1.5, instruct="dicción ejecutiva, clara y corporativa"),
 }
 _ALIASES = {
     "rápido": "rapido", "énfasis": "enfasis", "slow": "lento", "fast": "rapido",
     "whisper": "susurro", "pause": "pausa", "voice": "voz", "happy": "alegre",
     "sad": "triste", "angry": "enojado", "excited": "emocionado",
     "radio": "locutor_radio", "locutor": "locutor_radio", "cuento": "cuentacuentos",
+    "épico": "epico", "ciencia_ficción": "ciencia_ficcion", "poesía": "poesia",
+    "misterio": "misterioso",
 }
-_SPECIAL = {"pausa", "voz", "sfx"}
+_VOCAL_INFLECTIONS: dict[str, tuple[str, float, Style]] = {
+    "risa": ("ja, ja", 0.25, Style(speed=1.08, gain_db=1.0)),
+    "suspiro": ("...", 0.55, Style(speed=0.85, gain_db=-3.0)),
+    "jadeo": ("...", 0.35, Style(speed=1.10, gain_db=-2.0)),
+    "pausa_dramatica": ("", 1.40, Style()),
+}
+_SPECIAL = {"pausa", "voz", "sfx"} | set(_VOCAL_INFLECTIONS.keys())
 
 
 @dataclass(frozen=True)
@@ -136,6 +153,18 @@ def parse_markup(text: str) -> ParseResult:
                 warnings.append("[/pausa] no existe; ignorada")
             else:
                 segments.append(Segment(text="", pause_s=_parse_seconds(arg, warnings)))
+            continue
+        if name in _VOCAL_INFLECTIONS:
+            if not closing:
+                v_text, v_pause, v_style = _VOCAL_INFLECTIONS[name]
+                base_style = _fold(stack)
+                merged_style = Style(
+                    speed=base_style.speed * v_style.speed,
+                    gain_db=base_style.gain_db + v_style.gain_db,
+                    voice=base_style.voice,
+                    instruct=base_style.instruct,
+                )
+                segments.append(Segment(text=v_text if v_text != "..." else "", style=merged_style, pause_s=v_pause))
             continue
         if name == "sfx":
             if closing or not arg:
