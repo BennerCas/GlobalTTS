@@ -37,6 +37,8 @@ SFX_CATALOG: dict[str, str] = {
     "reloj": "Tic-Tac de Reloj",
     "latido": "Latido Cardíaco Tensivo",
     "fuego": "Hoguera Crepitante",
+    "espada": "Choque Metálico de Espadas",
+    "explosion": "Detonación Grave de Impacto",
     "alerta_radio": "Stinger de Boletín Radial",
     "transicion": "Transición Cinemática (Whoosh)",
 }
@@ -48,9 +50,11 @@ _SEMANTIC_RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\b(?:tocaron\s+la\s+puerta|cerró\s+la\s+puerta|abrió\s+la\s+puerta|portazo)\b", re.IGNORECASE), "puerta"),
     (re.compile(r"\b(?:se\s+oyeron\s+pasos|pasos\s+en\s+el\s+pasillo|caminaba\s+en\s+silencio)\b", re.IGNORECASE), "pasos"),
     (re.compile(r"\b(?:sonó\s+la\s+campana|campanada|repicaron\s+las\s+campanas)\b", re.IGNORECASE), "campana"),
-    (re.compile(r"\b(?:corazón\s+latía|latidos\s+de\s+su\s+corazón|palpitaba\s+con\s+fuerza)\b", re.IGNORECASE), "latido"),
+    (re.compile(r"\b(?:corazón\s+latía|latidos\s+de\s+su\s+corazón|palpitaba\s+con+fuerza)\b", re.IGNORECASE), "latido"),
     (re.compile(r"\b(?:tic\s*tac|reloj\s+marcaba|agujas\s+del\s+reloj)\b", re.IGNORECASE), "reloj"),
     (re.compile(r"\b(?:viento\s+aullaba|ráfaga\s+de\s+viento|viento\s+helado)\b", re.IGNORECASE), "viento"),
+    (re.compile(r"\b(?:espadas?\s+chocaron|desenvainó|acero\s+contra\s+acero)\b", re.IGNORECASE), "espada"),
+    (re.compile(r"\b(?:explosión|estallido|detonación\s+sacudió)\b", re.IGNORECASE), "explosion"),
 ]
 
 
@@ -169,6 +173,32 @@ def synthesize_sfx(name: str, sample_rate: int = 24000) -> np.ndarray:
         sos = scipy.signal.butter(2, band, btype="bandpass", fs=sample_rate, output="sos")
         filtered = scipy.signal.sosfilt(sos, noise).astype(np.float32)
         out = filtered * np.hanning(n)
+
+    elif clean in ("espada", "sword", "steel"):
+        dur = 0.90
+        n = int(dur * sample_rate)
+        t = np.linspace(0, dur, n, endpoint=False, dtype=np.float32)
+        # Desenvaine y choque metálico resonante (armónicos agudos inarmónicos)
+        ring = (
+            0.45 * np.sin(2 * np.pi * 2450.0 * t) * np.exp(-5.0 * t)
+            + 0.35 * np.sin(2 * np.pi * 3820.0 * t) * np.exp(-6.5 * t)
+            + 0.25 * np.sin(2 * np.pi * 5140.0 * t) * np.exp(-8.0 * t)
+        )
+        scrape_noise = rng.standard_normal(n, dtype=np.float32)
+        sos_hi = scipy.signal.butter(2, [1800.0, min(7500.0, sample_rate * 0.45)], btype="bandpass", fs=sample_rate, output="sos")
+        scrape = scipy.signal.sosfilt(sos_hi, scrape_noise).astype(np.float32) * np.exp(-12.0 * t)
+        out = ring + 0.35 * scrape
+
+    elif clean in ("explosion", "blast", "boom"):
+        dur = 2.0
+        n = int(dur * sample_rate)
+        t = np.linspace(0, dur, n, endpoint=False, dtype=np.float32)
+        # Impacto sub-grave inicial + onda expansiva de banda ancha con decaimiento exponencial
+        sub_boom = 0.85 * np.sin(2 * np.pi * (85.0 * np.exp(-3.0 * t) + 28.0) * t) * np.exp(-2.8 * t)
+        noise = rng.standard_normal(n, dtype=np.float32)
+        sos_low = scipy.signal.butter(3, [30.0, 520.0], btype="bandpass", fs=sample_rate, output="sos")
+        debris = scipy.signal.sosfilt(sos_low, noise).astype(np.float32) * np.exp(-1.9 * t) * (1.0 - np.exp(-40.0 * t))
+        out = sub_boom + 0.75 * debris
 
     else:
         # "transicion" / whoosh cinematográfico por defecto

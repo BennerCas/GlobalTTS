@@ -322,58 +322,80 @@ Puedes clonar el timbre, tono y cadencia de cualquier locutor a partir de una gr
         id="ia_narrativa_prompts",
         code="§ 06",
         nav_line1="§ 06 — Expresividad y Narración IA",
-        nav_line2="Mistral NeMo 12B y Prompts Maestros",
+        nav_line2="6 Modos IA y 16 Estilos CO-STAR",
         title="Expresividad, Narración IA (Mistral NeMo 12B) & Prompts Maestros",
-        subtitle="Los 4 modos de IA, los 9 estilos narrativos y el editor de Prompts Maestros.",
+        subtitle="Los 6 modos de IA con <thinking>, los 16 estilos narrativos CO-STAR y el editor de Prompts Maestros.",
         markdown_body="""### 6.1 Cómo Activar el Motor Narrativo Local (Mistral NeMo 12B)
 Tanto en *Lectura Rápida* como en el *Generador de Audiolibros* puedes activar la casilla **`Activar análisis con IA (Mistral NeMo 12B local)`**. Además, incluso si no activas la reescritura por LLM, el **Estilo** seleccionado aplica su perfil acústico real (velocidad, ganancia dB y pausas) directamente sobre el sintetizador.
 
-### 6.2 Los 4 Modos de Procesamiento IA
-1. **Enriquecer Expresividad (`enhance`)**: Respeta el 100% de las palabras originales del autor e inyecta estratégicamente etiquetas de dirección acústica (`[pausa]`, `[lento]`, `[rápido]`, `[énfasis]`, `[susurro]`, `[risa]`, `[suspiro]`).
-2. **Modo Narrador Completo (`rewrite`)**: Transforma el texto en una narración oral inmersiva adaptando la **Perspectiva Gramatical** (`1ra Persona Yo`, `2da Persona Tú`, `3ra Persona Él/Ella`), el **Tiempo Verbal** (`Pasado`, `Presente`, `Presente Continuo`, `Futuro`) y el **Estilo Literario**.
+### 6.2 Los 6 Modos de Procesamiento IA (Meta-Prompting CO-STAR + `<thinking>`)
+1. **Enriquecer Expresividad (`enhance`)**: Respeta el 100% de las palabras originales del autor e inyecta estratégicamente etiquetas de dirección acústica (`[pausa]`, `[pausa_dramatica]`, `[lento]`, `[rápido]`, `[énfasis]`, `[susurro]`, `[risa]`, `[suspiro]`, `[jadeo]`).
+2. **Modo Narrador Completo (`rewrite`)**: Transforma el texto en una narración oral inmersiva adaptando la **Perspectiva Gramatical** (`1ra Persona Yo`, `2da Persona Tú`, `3ra Persona Él/Ella`), el **Tiempo Verbal** (`Pasado`, `Presente`, `Presente Continuo`, `Futuro`) y cualquiera de los **16 Estilos Literarios CO-STAR**.
 3. **Traducción y Adaptación (`translate`)**: Traduce textos de otros idiomas al Español Neutro (`es-LA`) literario cuidando la eufonía y el ritmo hablado.
-4. **Detección y Clasificación de Diálogos (`dialogue_analysis`)**: Analiza la estructura dramática del capítulo y devuelve los segmentos etiquetados por hablante y emoción para el motor de Auto-Casting.
+4. **Detección y Clasificación de Diálogos (`dialogue_analysis`)**: Analiza la estructura dramática del capítulo y devuelve los segmentos etiquetados por hablante, género y emoción para el motor de Auto-Casting.
+5. **Guion de Audio-Trailer Cinematográfico 90s (`trailer_script`)**: Estructura un avance promocional en 4 actos (*Hook, Conflicto, Clímax y Tagline*) de 130 a 190 palabras con pausas dramáticas y efectos Foley SFX.
+6. **Dirección de Paisaje Sonoro y Efectos Foley SFX (`sfx_director`)**: Analiza las acciones físicas y el clima de la escena e inyecta marcadores `[sfx:...]` e inflexiones humanas sin alterar las palabras del autor.
 
-### 6.3 Catálogo de los 9 Estilos Narrativos y su Efecto Acústico Real
-| Estilo | Perfil Narrativo | Modulación Acústica Real |
+### 6.3 Catálogo de los 16 Estilos Narrativos Industriales y su Perfil Acústico DSP
+| Estilo (`ID`) | Nombre Descriptivo | Modulación Acústica Real (Speed / Gain / Pause) |
 | :--- | :--- | :--- |
-| **Cuentacuentos (`cuento`)** | Cálido, envolvente, tradición oral | Velocidad `0.94x`, pausas `+35%`, calidez `+1.0 dB` |
-| **Locutor de Radio (`locutor_radio`)** | Dinámico, sonrisa vocal, punch FM | Velocidad `1.06x`, compresión y presencia `+2.5 dB` |
-| **Terror y Suspenso (`terror`)** | Atmosférico, tenso, silencios largos | Velocidad `0.86x`, pausas `+60%`, tono sombrío `-1.5 dB` |
-| **Épico y Cinematográfico (`epico`)** | Solemne, heroico, gran proyección | Velocidad `0.92x`, ganancia `+2.0 dB`, pausas `+40%` |
-| **Ciencia Ficción (`ciencia_ficcion`)** | Preciso, futurista, analítico | Velocidad `0.98x`, articulación cristalina `+1.0 dB` |
-| **Ensayo Filosófico (`ensayo`)** | Reflexivo, sereno, didáctico | Velocidad `0.93x`, pausas meditativas `+35%` |
-| **Crónica Histórica (`historia`)** | Documental, riguroso, evocador | Velocidad `0.95x`, equilibrio tonal clásico |
-| **Declamación Poética (`poesia`)** | Lírico, cadencioso, íntimo | Velocidad `0.85x`, pausas de verso `+65%` |
-| **Drama Intenso (`drama`)** | Emotivo, visceral, alto contraste | Velocidad `0.94x`, rango dinámico expandido `+1.5 dB` |
+| `cuento` | Cuento Literario Clásico | `0.94x` • `+1.0 dB` • `Pausa 1.35x` |
+| `historia` | Crónica Histórica y Documental | `0.95x` • `+1.2 dB` • `Pausa 1.30x` |
+| `suceso` | Crónica de Suceso / Reportaje de Impacto | `1.08x` • `+2.2 dB` • `Pausa 0.85x` |
+| `epico` | Epopeya Cinematográfica y Fantasía Épica | `0.92x` • `+2.5 dB` • `Pausa 1.45x` |
+| `terror_psicologico` | Terror Psicológico y Suspenso Nocturno | `0.86x` • `-1.5 dB` • `Pausa 1.65x` |
+| `ensayo_cientifico` | Divulgación Científica y Ensayo Filosófico | `0.96x` • `+0.8 dB` • `Pausa 1.25x` |
+| `poetico_lirico` | Prosa Poética y Contemplación Lírica | `0.85x` • `-0.5 dB` • `Pausa 1.70x` |
+| `infantil_fabula` | Fábula Infantil y Relato Maravilloso | `0.92x` • `+1.5 dB` • `Pausa 1.40x` |
+| `cyberpunk_scifi` | Ciencia Ficción / Cyberpunk Noir | `1.03x` • `+1.5 dB` • `Pausa 1.05x` |
+| `confesion_intima` | Diario Personal / Confesión Íntima | `0.88x` • `-1.2 dB` • `Pausa 1.55x` |
+| `oratoria_motivacional` | Oratoria Inspiracional y Liderazgo | `1.02x` • `+2.8 dB` • `Pausa 1.20x` |
+| `cuentacuentos` | Cuentacuentos Tradicional (Oralidad Viva) | `0.93x` • `+1.2 dB` • `Pausa 1.40x` |
+| `locutor_radio` | Locutor de Radio / Podcast Nocturno | `1.06x` • `+2.5 dB` • `Pausa 0.85x` |
+| `true_crime_documental` | True Crime & Investigación Forense | `0.91x` • `+0.5 dB` • `Pausa 1.45x` |
+| `podcast_conversacional` | Podcast Conversacional & Storytelling Moderno | `1.04x` • `+1.6 dB` • `Pausa 0.95x` |
+| `institucional_corporativo` | Institucional, Ejecutivo & E-Learning | `1.00x` • `+1.8 dB` • `Pausa 1.05x` |
 
 ### 6.4 Pestaña 4: Gestor de Prompts Maestros & Estilos IA
-En la pestaña **PROMPTS MAESTROS & ESTILOS IA** puedes inspeccionar, editar, crear nuevos estilos o modificar los *System Prompts* bajo arquitectura CO-STAR / XML-Framing. Todo cambio se sincroniza bidireccionalmente con `config/prompts_library.json` y con el documento maestro `PROMPTS_MAESTROS.md`.""",
+En la pestaña **PROMPTS MAESTROS & ESTILOS IA** puedes inspeccionar, editar, duplicar, activar prompts personalizados con `[ ★ ] Activar para su Modo` o ajustar los multiplicadores acústicos (`Velocidad`, `Ganancia dB`, `Pausas`). Todo cambio se sincroniza bidireccionalmente con `src/ai/prompts_master.json` y con el documento maestro `PROMPTS_MAESTROS.md`.""",
         html_body="""
-<h3>6.1 Los 4 Modos de Procesamiento IA (Mistral NeMo 12B)</h3>
+<h3>6.1 Los 6 Modos de Procesamiento IA (Mistral NeMo 12B + Scratchpad &lt;thinking&gt;)</h3>
 <ul>
-  <li><b>Enriquecer Expresividad (<code>enhance</code>):</b> Conserva intacto el texto del autor e inserta etiquetas prosódicas (<code>[pausa]</code>, <code>[susurro]</code>, <code>[énfasis]</code>).</li>
-  <li><b>Modo Narrador Completo (<code>rewrite</code>):</b> Reescribe como relato oral aplicando la <b>Perspectiva</b> (1ra/2da/3ra persona), <b>Tiempo Verbal</b> (Pasado/Presente/Continuo/Futuro) y <b>Estilo</b>.</li>
+  <li><b>Enriquecer Expresividad (<code>enhance</code>):</b> Conserva intacto el texto del autor e inserta etiquetas prosódicas e inflexiones (<code>[pausa]</code>, <code>[pausa_dramatica]</code>, <code>[susurro]</code>, <code>[énfasis]</code>, <code>[risa]</code>, <code>[suspiro]</code>, <code>[jadeo]</code>).</li>
+  <li><b>Modo Narrador Completo (<code>rewrite</code>):</b> Reescribe como relato oral aplicando la <b>Perspectiva</b> (1ra/2da/3ra persona), <b>Tiempo Verbal</b> y cualquiera de los <b>16 Estilos CO-STAR</b>.</li>
   <li><b>Traducción y Adaptación (<code>translate</code>):</b> Traduce al español neutro cuidando la musicalidad hablada.</li>
   <li><b>Detección de Diálogos (<code>dialogue_analysis</code>):</b> Clasifica hablantes, géneros y emociones para el Auto-Casting.</li>
+  <li><b>Guion de Audio-Trailer 90s (<code>trailer_script</code>):</b> Genera un avance promocional en 4 actos con ganchos dramáticos y efectos Foley.</li>
+  <li><b>Dirección de Efectos Foley SFX (<code>sfx_director</code>):</b> Inyecta marcadores <code>[sfx:...]</code> e inflexiones humanas sin tocar las palabras originales.</li>
 </ul>
 
-<h3>6.2 Tabla de Estilos y su Modulación Acústica Real</h3>
-<table width="100%" cellspacing="0" cellpadding="6" style="border:1px solid #1E293B; background:#0F172A;">
+<h3>6.2 Tabla de los 16 Estilos Narrativos Industriales y su Modulación Acústica Real</h3>
+<table width="100%" cellspacing="0" cellpadding="5" style="border:1px solid #1E293B; background:#0F172A;">
   <tr style="background:#1E293B; color:#38BDF8; font-weight:bold;">
-    <td>Estilo</td>
-    <td>Carácter Vocal</td>
-    <td>Parámetros Acústicos Reales</td>
+    <td>Estilo (ID)</td>
+    <td>Nombre</td>
+    <td>Perfil Acústico DSP</td>
   </tr>
-  <tr><td><b>Cuentacuentos</b></td><td>Cálido, cercano y envolvente</td><td><code>Speed 0.94x | Gain +1.0 dB | Pause 1.35x</code></td></tr>
-  <tr><td><b>Locutor de Radio</b></td><td>Enérgico, articulado, presencia FM</td><td><code>Speed 1.06x | Gain +2.5 dB | Pause 0.85x</code></td></tr>
-  <tr><td><b>Terror y Suspenso</b></td><td>Tenso, sombrío, pausas dramáticas</td><td><code>Speed 0.86x | Gain -1.5 dB | Pause 1.60x</code></td></tr>
-  <tr><td><b>Épico Cinematográfico</b></td><td>Solemne, grandioso, heroico</td><td><code>Speed 0.92x | Gain +2.0 dB | Pause 1.40x</code></td></tr>
-  <tr><td><b>Declamación Poética</b></td><td>Lírico, cadencioso, pausado</td><td><code>Speed 0.85x | Gain -0.5 dB | Pause 1.65x</code></td></tr>
+  <tr><td><code>cuento</code></td><td>Cuento Literario Clásico</td><td><code>Speed 0.94x | Gain +1.0 dB | Pause 1.35x</code></td></tr>
+  <tr><td><code>historia</code></td><td>Crónica Histórica y Documental</td><td><code>Speed 0.95x | Gain +1.2 dB | Pause 1.30x</code></td></tr>
+  <tr><td><code>suceso</code></td><td>Crónica de Suceso / Reportaje</td><td><code>Speed 1.08x | Gain +2.2 dB | Pause 0.85x</code></td></tr>
+  <tr><td><code>epico</code></td><td>Epopeya Cinematográfica y Fantasía</td><td><code>Speed 0.92x | Gain +2.5 dB | Pause 1.45x</code></td></tr>
+  <tr><td><code>terror_psicologico</code></td><td>Terror Psicológico y Suspenso</td><td><code>Speed 0.86x | Gain -1.5 dB | Pause 1.65x</code></td></tr>
+  <tr><td><code>ensayo_cientifico</code></td><td>Divulgación Científica y Ensayo</td><td><code>Speed 0.96x | Gain +0.8 dB | Pause 1.25x</code></td></tr>
+  <tr><td><code>poetico_lirico</code></td><td>Prosa Poética y Contemplación</td><td><code>Speed 0.85x | Gain -0.5 dB | Pause 1.70x</code></td></tr>
+  <tr><td><code>infantil_fabula</code></td><td>Fábula Infantil y Maravilloso</td><td><code>Speed 0.92x | Gain +1.5 dB | Pause 1.40x</code></td></tr>
+  <tr><td><code>cyberpunk_scifi</code></td><td>Ciencia Ficción / Cyberpunk Noir</td><td><code>Speed 1.03x | Gain +1.5 dB | Pause 1.05x</code></td></tr>
+  <tr><td><code>confesion_intima</code></td><td>Diario Personal / Confesión Íntima</td><td><code>Speed 0.88x | Gain -1.2 dB | Pause 1.55x</code></td></tr>
+  <tr><td><code>oratoria_motivacional</code></td><td>Oratoria Inspiracional y Liderazgo</td><td><code>Speed 1.02x | Gain +2.8 dB | Pause 1.20x</code></td></tr>
+  <tr><td><code>cuentacuentos</code></td><td>Cuentacuentos Tradicional</td><td><code>Speed 0.93x | Gain +1.2 dB | Pause 1.40x</code></td></tr>
+  <tr><td><code>locutor_radio</code></td><td>Locutor de Radio / Podcast Nocturno</td><td><code>Speed 1.06x | Gain +2.5 dB | Pause 0.85x</code></td></tr>
+  <tr><td><code>true_crime_documental</code></td><td>True Crime &amp; Investigación Forense</td><td><code>Speed 0.91x | Gain +0.5 dB | Pause 1.45x</code></td></tr>
+  <tr><td><code>podcast_conversacional</code></td><td>Podcast Conversacional Moderno</td><td><code>Speed 1.04x | Gain +1.6 dB | Pause 0.95x</code></td></tr>
+  <tr><td><code>institucional_corporativo</code></td><td>Institucional, Ejecutivo &amp; E-Learning</td><td><code>Speed 1.00x | Gain +1.8 dB | Pause 1.05x</code></td></tr>
 </table>
 
 <h3>6.3 Pestaña 4: Prompts Maestros &amp; Estilos IA</h3>
-<p>Permite editar cada prompt del sistema, crear nuevos estilos personalizados con sus propios multiplicadores acústicos y sincronizarlos en tiempo real con el documento <code>PROMPTS_MAESTROS.md</code>.</p>
+<p>Permite editar cada prompt del sistema, duplicar y activar variantes con <b><code>[ ★ ] Activar para su Modo</code></b>, ajustar los multiplicadores acústicos de cada estilo y sincronizarlos en tiempo real con <code>PROMPTS_MAESTROS.md</code>.</p>
 """,
     ),
     ManualSection(

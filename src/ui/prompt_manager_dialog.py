@@ -19,7 +19,6 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
-    QSplitter,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -32,7 +31,7 @@ PROMPTS_MD_FILE = PROJECT_ROOT / "PROMPTS_MAESTROS.md"
 
 
 class PromptManagerWidget(QWidget):
-    """Widget embebible para ver, editar, duplicar, agregar y restaurar Prompts Maestros."""
+    """Widget embebible para ver, editar, duplicar, activar y restaurar Prompts Maestros."""
 
     prompts_updated = pyqtSignal()
 
@@ -82,7 +81,7 @@ class PromptManagerWidget(QWidget):
         header_lay = QVBoxLayout()
         title = QLabel("Catálogo Maestro de Prompts y Estilos Narrativos")
         title.setObjectName("titleLabel")
-        subtitle = QLabel("Ajusta los System Prompts bajo Meta-Prompting CO-STAR, parámetros de Mistral NeMo y perfil acústico de estilos.")
+        subtitle = QLabel("Ajusta los System Prompts bajo Meta-Prompting CO-STAR, parámetros de Mistral NeMo y perfil acústico de los 16 estilos.")
         subtitle.setObjectName("subtitleLabel")
         header_lay.addWidget(title)
         header_lay.addWidget(subtitle)
@@ -97,6 +96,12 @@ class PromptManagerWidget(QWidget):
         self.combo_items.currentIndexChanged.connect(self._on_item_selected)
         sel_lay.addWidget(QLabel("Elemento Activo:"))
         sel_lay.addWidget(self.combo_items, stretch=1)
+
+        self.btn_set_active = QPushButton("[ ★ ] Activar para su Modo")
+        self.btn_set_active.setObjectName("secondaryActionButton")
+        self.btn_set_active.setToolTip("Establece el prompt seleccionado como el prompt activo para su Modo de IA")
+        self.btn_set_active.clicked.connect(self._activate_current_for_mode)
+        sel_lay.addWidget(self.btn_set_active)
 
         self.btn_duplicate = QPushButton("[ + ] Duplicar como Personalizado")
         self.btn_duplicate.setObjectName("actionButton")
@@ -130,7 +135,7 @@ class PromptManagerWidget(QWidget):
         self.meta_lay.addRow("Identificador (ID):", self.lbl_id)
 
         self.edit_description = QLineEdit()
-        self.meta_lay.addRow("Descripción:", self.edit_description)
+        self.meta_lay.addRow("Descripción / Tono:", self.edit_description)
 
         self.edit_template = QLineEdit()
         self.edit_template.setPlaceholderText("ej. Texto a enriquecer:\n\n{text}")
@@ -198,9 +203,9 @@ class PromptManagerWidget(QWidget):
         ed_lay = QVBoxLayout(self.editor_frame)
         ed_lay.setContentsMargins(0, 0, 0, 0)
         ed_lay.setSpacing(4)
-        lbl_sys = QLabel("System Prompt Estructurado (CO-STAR & Directrices TTS):")
-        lbl_sys.setStyleSheet("color: #94a3b8; font-weight: 600; font-size: 11px;")
-        ed_lay.addWidget(lbl_sys)
+        self.lbl_sys = QLabel("System Prompt Estructurado (CO-STAR & Directrices TTS):")
+        self.lbl_sys.setStyleSheet("color: #94a3b8; font-weight: 600; font-size: 11px;")
+        ed_lay.addWidget(self.lbl_sys)
 
         self.edit_system = QTextEdit()
         self.edit_system.setPlaceholderText("System Prompt estructurado (CO-STAR, reglas duras, etiquetas TTS)...")
@@ -255,14 +260,18 @@ class PromptManagerWidget(QWidget):
         self.combo_items.blockSignals(True)
         self.combo_items.clear()
 
+        active_ids = set(self.library.active_configuration.values())
+
         # 1. Modos Maestros de IA
         for mode in self.library.list_modes():
-            label = f"[Modo IA] {mode.name} ({mode.id})"
+            badge = " [★ ACTIVO]" if mode.id in active_ids else ""
+            label = f"[Modo IA] {mode.name} ({mode.id}){badge}"
             self.combo_items.addItem(label, ("mode", mode.id))
 
         # 2. Prompts Personalizados
         for custom in self.library.custom_prompts.values():
-            label = f"[Personalizado] {custom.name} ({custom.id})"
+            badge = " [★ ACTIVO]" if custom.id in active_ids else ""
+            label = f"[Personalizado] {custom.name} ({custom.id}){badge}"
             self.combo_items.addItem(label, ("custom", custom.id))
 
         # 3. Estilos Narrativos CO-STAR
@@ -286,12 +295,16 @@ class PromptManagerWidget(QWidget):
         cat, item_id = item_data
         self._current_type = cat
         self._current_id = item_id
-        self.lbl_id.setText(f"{item_id} ({cat})")
 
         if cat in ("mode", "custom"):
             prompt = self.library.get_prompt(item_id)
             if not prompt:
                 return
+
+            mode_k = prompt.mode_key or "enhance"
+            is_act = self.library.get_active_prompt_id(mode_k) == item_id
+            self.lbl_id.setText(f"{item_id} ({cat} • modo: {mode_k}{' • ★ ACTIVO' if is_act else ''})")
+            self.lbl_sys.setText("System Prompt Estructurado (CO-STAR, <thinking> & Directrices TTS):")
 
             self.edit_name.setText(prompt.name)
             self.edit_description.setText(prompt.description)
@@ -304,6 +317,7 @@ class PromptManagerWidget(QWidget):
             self.spin_ctx.setValue(int(params.get("num_ctx", 4096)))
 
             self.btn_delete.setEnabled(cat == "custom")
+            self.btn_set_active.setEnabled(not is_act)
             self.edit_template.setEnabled(True)
             self.spin_temp.setEnabled(True)
             self.spin_topp.setEnabled(True)
@@ -321,11 +335,16 @@ class PromptManagerWidget(QWidget):
             if not style:
                 return
 
+            self.lbl_id.setText(
+                f"{item_id} (estilo • speed={style.speed_multiplier:.2f}x | gain={style.gain_db:+.1f}dB | pause={style.pause_multiplier:.2f}x)"
+            )
+            self.lbl_sys.setText(f"Addon del System Prompt para el Estilo '{style.name}' (Cadencia: {style.cadence}):")
+
             self.edit_name.setText(style.name)
-            self.edit_description.setText(f"Tono: {style.tone}")
-            self.edit_system.setPlainText(style.get_full_guidance())
-            self.edit_template.setText("")
-            self.edit_template.setEnabled(False)
+            self.edit_description.setText(style.tone)
+            self.edit_system.setPlainText(style.system_prompt_addon)
+            self.edit_template.setText(style.prosody_guidance)
+            self.edit_template.setEnabled(True)
 
             self.spin_temp.setValue(0.4)
             self.spin_topp.setValue(0.9)
@@ -334,6 +353,7 @@ class PromptManagerWidget(QWidget):
             self.spin_topp.setEnabled(False)
             self.spin_ctx.setEnabled(False)
             self.btn_delete.setEnabled(False)
+            self.btn_set_active.setEnabled(False)
 
             self.spin_style_speed.setValue(float(style.speed_multiplier))
             self.spin_style_gain.setValue(float(style.gain_db))
@@ -341,6 +361,41 @@ class PromptManagerWidget(QWidget):
             self.spin_style_speed.setEnabled(True)
             self.spin_style_gain.setEnabled(True)
             self.spin_style_pause.setEnabled(True)
+
+    def _activate_current_for_mode(self) -> None:
+        """Establece el prompt actual como el activo para su mode_key."""
+        if self._current_type not in ("mode", "custom") or not self._current_id:
+            return
+        prompt = self.library.get_prompt(self._current_id)
+        if not prompt:
+            return
+        mode_key = prompt.mode_key
+        if not mode_key:
+            keys = self.library.get_mode_keys()
+            chosen, ok = QInputDialog.getItem(
+                self,
+                "Seleccionar Modo de IA",
+                "¿Para qué Modo de IA deseas activar este prompt?",
+                keys,
+                0,
+                False,
+            )
+            if not ok or not chosen:
+                return
+            mode_key = chosen
+            prompt.mode_key = mode_key
+
+        self.library.set_active_prompt(mode_key, self._current_id)
+        curr_idx = self.combo_items.currentIndex()
+        self._populate_selector()
+        if 0 <= curr_idx < self.combo_items.count():
+            self.combo_items.setCurrentIndex(curr_idx)
+        self.prompts_updated.emit()
+        QMessageBox.information(
+            self,
+            "Prompt Activado",
+            f"El prompt '{prompt.name}' está ahora activo para el modo '{mode_key}'.",
+        )
 
     def _save_changes(self) -> None:
         """Guarda los cambios del formulario en la biblioteca y persiste a JSON."""
@@ -366,12 +421,18 @@ class PromptManagerWidget(QWidget):
                 self.library.update_style(
                     self._current_id,
                     name=self.edit_name.text().strip(),
-                    system_prompt_addon=self.edit_system.toPlainText(),
+                    tone=self.edit_description.text().strip(),
+                    prosody_guidance=self.edit_template.text().strip(),
+                    system_prompt_addon=self.edit_system.toPlainText().strip(),
                     speed_multiplier=round(self.spin_style_speed.value(), 2),
                     gain_db=round(self.spin_style_gain.value(), 1),
                     pause_multiplier=round(self.spin_style_pause.value(), 2),
                 )
 
+            curr_idx = self.combo_items.currentIndex()
+            self._populate_selector()
+            if 0 <= curr_idx < self.combo_items.count():
+                self.combo_items.setCurrentIndex(curr_idx)
             self.prompts_updated.emit()
             QMessageBox.information(self, "Guardado Exitoso", "Prompt y perfil acústico guardados correctamente en JSON.")
         except Exception as e:
@@ -414,6 +475,7 @@ class PromptManagerWidget(QWidget):
                     description=f"Basado en estilo {style.name}",
                     system_prompt=self.edit_system.toPlainText(),
                     user_template="{text}",
+                    mode_key="rewrite",
                     parameters={"temperature": 0.45, "top_p": 0.9, "num_ctx": 4096},
                     is_builtin=False,
                 )

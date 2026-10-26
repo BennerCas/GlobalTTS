@@ -312,12 +312,14 @@ class QuickReaderTab(QWidget):
 
         for label_btn, tag_val, is_wrap in (
             ("[+Pausa 1s]", "[pausa:1s]", False),
+            ("[Pausa Dram.]", "[pausa_dramatica]", False),
             ("[Susurro]", "susurro", True),
             ("[Énfasis]", "énfasis", True),
             ("[Lento]", "lento", True),
             ("[Rápido]", "rápido", True),
             ("[Risa]", "[risa]", False),
             ("[Suspiro]", "[suspiro]", False),
+            ("[Jadeo]", "[jadeo]", False),
         ):
             b_tag = QPushButton(label_btn)
             b_tag.setObjectName("secondaryActionButton")
@@ -337,6 +339,8 @@ class QuickReaderTab(QWidget):
             "reloj",
             "latido",
             "fuego",
+            "espada",
+            "explosion",
             "alerta_radio",
             "transicion",
         ):

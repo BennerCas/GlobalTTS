@@ -157,18 +157,14 @@ def maybe_translate_to_spanish(text: str) -> str:
     if lang != "en":
         return text
 
-    # Intentar traducción con Mistral NeMo local (Ollama)
+    # Intentar traducción con Mistral NeMo local (Ollama) usando el Catálogo Maestro de Prompts
     try:
         from src.ai.nemo_enhancer import MistralNeMoEnhancer
         enhancer = MistralNeMoEnhancer()
         if enhancer.is_available():
-            log("[AI] Traduciendo de inglés a español con Mistral NeMo local...")
-            sys_inst = (
-                "Eres un traductor experto de inglés a español neutro latinoamericano. "
-                "Traduce únicamente el texto dado sin añadir comentarios, explicaciones ni formatos adicionales."
-            )
-            translated = enhancer._call_ollama(prompt=f"Translate to Spanish:\n\n{text}", system_prompt=sys_inst)
-            if translated:
+            log("[AI] Traduciendo de inglés a español con Mistral NeMo local (Catálogo Maestro)...")
+            translated = enhancer.translate_and_adapt(text, target_lang="es-LA")
+            if translated and translated.strip():
                 log(f"[AI] Traducción completada ({len(translated)} chars).")
                 return translated
     except Exception:

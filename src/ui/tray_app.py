@@ -831,6 +831,8 @@ class MainWindow(QDialog):
         self.chk_mp3.setChecked(True)
         self.chk_m4b = QCheckBox(".M4B (Capítulos)")
         self.chk_m4b.setChecked(True)
+        self.chk_epub3 = QCheckBox("EPUB3 Read-Aloud")
+        self.chk_epub3.setChecked(True)
         self.chk_split_chapters = QCheckBox("Capítulos MP3")
         self.chk_split_chapters.setChecked(True)
         self.chk_video = QCheckBox("Video Karaoke MP4")
@@ -847,6 +849,7 @@ class MainWindow(QDialog):
         for chk in (
             self.chk_mp3,
             self.chk_m4b,
+            self.chk_epub3,
             self.chk_split_chapters,
             self.chk_video,
             self.chk_flac,
@@ -1440,6 +1443,7 @@ class MainWindow(QDialog):
                 generate_cover_ai=self.chk_auto_cover_ai.isChecked(),
                 generate_audio=self.chk_mp3.isChecked() or self.chk_m4b.isChecked(),
                 export_m4b=self.chk_m4b.isChecked(),
+                export_epub3=self.chk_epub3.isChecked(),
                 split_chapters=self.chk_split_chapters.isChecked(),
                 generate_trailer=self.chk_generate_trailer.isChecked(),
                 generate_video=self.chk_video.isChecked(),
