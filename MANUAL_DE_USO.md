@@ -31,7 +31,7 @@ En la cabecera y barra de navegación principal encontrarás:
 *Cómo leer en voz alta o exportar a MP3 cualquier texto seleccionado en Windows.*
 
 ### 2.1 Cómo Funcionan los Atajos Globales
-El servicio residente `global_tts.ahk` (AutoHotkey v2) escucha tus gestos de teclado y ratón en todo el sistema operativo (navegadores web, visores PDF, Word, Notion, terminales o editores de código) y envía el texto seleccionado al motor neuronal local `speak_selection.py`.
+El servicio residente `global_tts.ahk` (AutoHotkey v2) escucha tus gestos de teclado y ratón en todo el sistema operativo (navegadores web, visores PDF, Word, Notion, terminales o editores de código) y envía el texto seleccionado al motor neuronal local `tts_engine.py`.
 
 ### 2.2 Tabla Maestra de Combinaciones de Teclas y Ratón
 1. **Lectura Inmediata con Ratón (`Seleccionar Texto + Mantener Clic Izquierdo + Barra Espaciadora`)**:
