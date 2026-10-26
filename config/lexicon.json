@@ -1,0 +1,389 @@
+{
+  "entries": [
+    {
+      "term": "IA",
+      "phonetic": "inteligencia artificial",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "IAs",
+      "phonetic": "inteligencias artificiales",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "LLM",
+      "phonetic": "ele ele eme",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "LLMs",
+      "phonetic": "modelos de lenguaje",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "GPU",
+      "phonetic": "ge pe u",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "GPUs",
+      "phonetic": "ge pe us",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "iGPU",
+      "phonetic": "ge pe u integrada",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "CPU",
+      "phonetic": "ce pe u",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "VRAM",
+      "phonetic": "ve ram",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "SQL",
+      "phonetic": "ese cu ele",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "NoSQL",
+      "phonetic": "no ese cu ele",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "API",
+      "phonetic": "api",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "APIs",
+      "phonetic": "apis",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "TTS",
+      "phonetic": "te te ese",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "OCR",
+      "phonetic": "o ce erre",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "DSP",
+      "phonetic": "de ese pe",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "UI",
+      "phonetic": "interfaz de usuario",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "UX",
+      "phonetic": "experiencia de usuario",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "URL",
+      "phonetic": "u erre ele",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "HTML",
+      "phonetic": "hache te eme ele",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "CSS",
+      "phonetic": "ce ese ese",
+      "case_sensitive": true,
+      "category": "acronimo",
+      "enabled": true
+    },
+    {
+      "term": "JSON",
+      "phonetic": "yeison",
+      "case_sensitive": true,
+      "category": "anglicismo",
+      "enabled": true
+    },
+    {
+      "term": "ONNX",
+      "phonetic": "ónix",
+      "case_sensitive": true,
+      "category": "anglicismo",
+      "enabled": true
+    },
+    {
+      "term": "PyTorch",
+      "phonetic": "páitorch",
+      "case_sensitive": false,
+      "category": "anglicismo",
+      "enabled": true
+    },
+    {
+      "term": "DirectML",
+      "phonetic": "direct eme ele",
+      "case_sensitive": false,
+      "category": "anglicismo",
+      "enabled": true
+    },
+    {
+      "term": "ROCm",
+      "phonetic": "roc eme",
+      "case_sensitive": false,
+      "category": "anglicismo",
+      "enabled": true
+    },
+    {
+      "term": "WiFi",
+      "phonetic": "güifi",
+      "case_sensitive": false,
+      "category": "anglicismo",
+      "enabled": true
+    },
+    {
+      "term": "Podcast",
+      "phonetic": "pódcast",
+      "case_sensitive": false,
+      "category": "anglicismo",
+      "enabled": true
+    },
+    {
+      "term": "Streaming",
+      "phonetic": "estríming",
+      "case_sensitive": false,
+      "category": "anglicismo",
+      "enabled": true
+    },
+    {
+      "term": "Framework",
+      "phonetic": "fréimwork",
+      "case_sensitive": false,
+      "category": "anglicismo",
+      "enabled": true
+    },
+    {
+      "term": "Pipeline",
+      "phonetic": "páip-lain",
+      "case_sensitive": false,
+      "category": "anglicismo",
+      "enabled": true
+    },
+    {
+      "term": "Prompt",
+      "phonetic": "prompt",
+      "case_sensitive": false,
+      "category": "anglicismo",
+      "enabled": true
+    },
+    {
+      "term": "Prompts",
+      "phonetic": "prompts",
+      "case_sensitive": false,
+      "category": "anglicismo",
+      "enabled": true
+    },
+    {
+      "term": "kHz",
+      "phonetic": "kilohercios",
+      "case_sensitive": true,
+      "category": "unidad",
+      "enabled": true
+    },
+    {
+      "term": "MHz",
+      "phonetic": "megahercios",
+      "case_sensitive": true,
+      "category": "unidad",
+      "enabled": true
+    },
+    {
+      "term": "GHz",
+      "phonetic": "gigahercios",
+      "case_sensitive": true,
+      "category": "unidad",
+      "enabled": true
+    },
+    {
+      "term": "dB",
+      "phonetic": "decibelios",
+      "case_sensitive": true,
+      "category": "unidad",
+      "enabled": true
+    },
+    {
+      "term": "dBTP",
+      "phonetic": "decibelios de pico real",
+      "case_sensitive": true,
+      "category": "unidad",
+      "enabled": true
+    },
+    {
+      "term": "LUFS",
+      "phonetic": "lufs",
+      "case_sensitive": true,
+      "category": "unidad",
+      "enabled": true
+    },
+    {
+      "term": "GB",
+      "phonetic": "gigabytes",
+      "case_sensitive": true,
+      "category": "unidad",
+      "enabled": true
+    },
+    {
+      "term": "MB",
+      "phonetic": "megabytes",
+      "case_sensitive": true,
+      "category": "unidad",
+      "enabled": true
+    },
+    {
+      "term": "KB",
+      "phonetic": "kilobytes",
+      "case_sensitive": true,
+      "category": "unidad",
+      "enabled": true
+    },
+    {
+      "term": "EE. UU.",
+      "phonetic": "Estados Unidos",
+      "case_sensitive": false,
+      "category": "abreviatura",
+      "enabled": true
+    },
+    {
+      "term": "EE.UU.",
+      "phonetic": "Estados Unidos",
+      "case_sensitive": false,
+      "category": "abreviatura",
+      "enabled": true
+    },
+    {
+      "term": "s. XXI",
+      "phonetic": "siglo veintiuno",
+      "case_sensitive": false,
+      "category": "abreviatura",
+      "enabled": true
+    },
+    {
+      "term": "s. XX",
+      "phonetic": "siglo veinte",
+      "case_sensitive": false,
+      "category": "abreviatura",
+      "enabled": true
+    },
+    {
+      "term": "s. XIX",
+      "phonetic": "siglo diecinueve",
+      "case_sensitive": false,
+      "category": "abreviatura",
+      "enabled": true
+    },
+    {
+      "term": "s. XVIII",
+      "phonetic": "siglo dieciocho",
+      "case_sensitive": false,
+      "category": "abreviatura",
+      "enabled": true
+    },
+    {
+      "term": "Dr.",
+      "phonetic": "Doctor",
+      "case_sensitive": true,
+      "category": "abreviatura",
+      "enabled": true
+    },
+    {
+      "term": "Dra.",
+      "phonetic": "Doctora",
+      "case_sensitive": true,
+      "category": "abreviatura",
+      "enabled": true
+    },
+    {
+      "term": "Sr.",
+      "phonetic": "Señor",
+      "case_sensitive": true,
+      "category": "abreviatura",
+      "enabled": true
+    },
+    {
+      "term": "Sra.",
+      "phonetic": "Señora",
+      "case_sensitive": true,
+      "category": "abreviatura",
+      "enabled": true
+    },
+    {
+      "term": "Prof.",
+      "phonetic": "Profesor",
+      "case_sensitive": true,
+      "category": "abreviatura",
+      "enabled": true
+    },
+    {
+      "term": "Pág.",
+      "phonetic": "Página",
+      "case_sensitive": false,
+      "category": "abreviatura",
+      "enabled": true
+    },
+    {
+      "term": "Cap.",
+      "phonetic": "Capítulo",
+      "case_sensitive": false,
+      "category": "abreviatura",
+      "enabled": true
+    }
+  ]
+}

@@ -55,16 +55,17 @@ _ALIASES = {
     "sad": "triste", "angry": "enojado", "excited": "emocionado",
     "radio": "locutor_radio", "locutor": "locutor_radio", "cuento": "cuentacuentos",
 }
-_SPECIAL = {"pausa", "voz"}
+_SPECIAL = {"pausa", "voz", "sfx"}
 
 
 @dataclass(frozen=True)
 class Segment:
-    """Fragmento con estilo. ``text`` vacío = silencio de ``pause_s`` segundos."""
+    """Fragmento con estilo. ``text`` vacío = silencio de ``pause_s`` segundos o efecto ``sfx``."""
 
     text: str
     style: Style = field(default_factory=Style)
     pause_s: float = 0.0
+    sfx: str = ""
 
 
 @dataclass(frozen=True)
@@ -135,6 +136,12 @@ def parse_markup(text: str) -> ParseResult:
                 warnings.append("[/pausa] no existe; ignorada")
             else:
                 segments.append(Segment(text="", pause_s=_parse_seconds(arg, warnings)))
+            continue
+        if name == "sfx":
+            if closing or not arg:
+                warnings.append("[sfx] requiere un nombre ([sfx:trueno]); ignorada")
+            else:
+                segments.append(Segment(text="", sfx=arg.strip()))
             continue
         if closing:
             idx = next((i for i in range(len(stack) - 1, -1, -1) if stack[i][0] == name), None)

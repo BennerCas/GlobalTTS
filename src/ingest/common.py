@@ -9,9 +9,13 @@ from pathlib import Path
 
 from src.core.models import Chapter
 
-# Encabezados de capítulo habituales (ES/EN), en una sola línea corta.
+# Encabezados de capítulo habituales (ES/EN), números romanos o encabezados Markdown en una sola línea corta.
 HEADING_RE = re.compile(
-    r"^\s*(?:cap[ií]tulo|chapter|parte|part|libro|book|pr[oó]logo|ep[ií]logo|prologue|epilogue)\b.{0,80}$",
+    r"^\s*(?:"
+    r"(?:#{1,3}\s+.{1,80})|"
+    r"(?:(?:cap[ií]tulo|chapter|parte|part|libro|book|pr[oó]logo|ep[ií]logo|prologue|epilogue|introducci[oó]n|conclusi[oó]n|acto|escena|secci[oó]n|ap[eé]ndice)\b.{0,80})|"
+    r"(?:(?:I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII|XIV|XV|XVI|XVII|XVIII|XIX|XX)[\.\s:-]+\s*[A-ZÁÉÍÓÚÑ].{1,70})"
+    r")$",
     re.IGNORECASE,
 )
 _ZERO_WIDTH = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff\u00ad"), None)

@@ -2,17 +2,16 @@
 
 Diseño Ejecutivo Obsidian & Titanium:
 - Dos vistas integradas:
-  1. Catálogo de Audiolibros Completos y Videos Karaoke MP4.
+  1. Catálogo de Audiolibros Completos (.MP3, .M4B, .FLAC, Capítulos), Trailers 90s y Videos Karaoke MP4.
   2. Historial Infinito de Lecturas Rápidas generadas desde la pestaña de Lector Rápido.
-- Reproductor multimedia de alta fidelidad con slider de precisión y telemetría de tiempo.
-- Acceso sobrio y profesional a YouTube Studio y Spotify for Podcasters.
-- Firma institucional 'HUMAN AI SYNERGY BY BENNER CASTILLO'.
+- Generación instantánea de Portadas IA 1024x1024, Audio-Trailers promocionales, exportación de subtítulos
+  (.SRT/.VTT/.LRC/.ASS), Paquete SEO YouTube/Spotify/Podcast RSS y Streaming Móvil WiFi (QR).
+- Firma institucional 'HUMAN AI SYNERGY BY BENNER CASTILLO - 2026®'.
 """
 from __future__ import annotations
 
 import json
 import os
-import subprocess
 import webbrowser
 from datetime import timedelta
 from pathlib import Path
@@ -22,6 +21,7 @@ from PyQt6.QtCore import QUrl, Qt, pyqtSignal
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtWidgets import (
+    QFileDialog,
     QFrame,
     QGroupBox,
     QHBoxLayout,
@@ -40,7 +40,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src.ai.cover_generator import generate_audiobook_cover
 from src.core.history import HistoryManager
+from src.core.job import AudiobookPipeline, JobConfig
+from src.ui.studio_dialogs import MobileStreamingDialog
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 BIBLIOTECA_DIR = PROJECT_ROOT / "biblioteca"
@@ -49,7 +52,6 @@ BIBLIOTECA_DIR = PROJECT_ROOT / "biblioteca"
 class LibraryTab(QWidget):
     """Pestaña de exploración de la biblioteca, audiolibros e historial infinito."""
 
-    # Señal para enviar texto al lector rápido si el usuario lo solicita
     load_text_requested = pyqtSignal(str)
 
     def __init__(self, parent: Optional[QWidget] = None):
@@ -73,7 +75,7 @@ class LibraryTab(QWidget):
         main_layout.setContentsMargins(14, 14, 14, 14)
         main_layout.setSpacing(10)
 
-        # Barra superior con buscador y accesos de carpeta
+        # Barra superior con buscador, Streaming Móvil QR y accesos de carpeta
         top_bar = QHBoxLayout()
         top_bar.setSpacing(8)
 
@@ -87,6 +89,12 @@ class LibraryTab(QWidget):
         refresh_btn.clicked.connect(self.refresh_library)
         top_bar.addWidget(refresh_btn)
 
+        mobile_qr_btn = QPushButton("[ ↗ ] Streaming Móvil WiFi (QR)")
+        mobile_qr_btn.setObjectName("actionButton")
+        mobile_qr_btn.setToolTip("Levanta el servidor local WiFi y muestra el código QR para escuchar en tu teléfono")
+        mobile_qr_btn.clicked.connect(self.open_mobile_streaming_qr)
+        top_bar.addWidget(mobile_qr_btn)
+
         open_folder_btn = QPushButton("[ ↗ ] Abrir Carpeta Biblioteca")
         open_folder_btn.setObjectName("secondaryActionButton")
         open_folder_btn.clicked.connect(lambda: os.startfile(BIBLIOTECA_DIR) if BIBLIOTECA_DIR.exists() else None)
@@ -97,7 +105,6 @@ class LibraryTab(QWidget):
         # Splitter central: Catálogo / Historial (izq) y Reproductor Ejecutivo (der)
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # Sub-pestañas de la izquierda
         self.catalog_tabs = QTabWidget()
 
         # 1. Tabla de audiolibros
@@ -133,14 +140,13 @@ class LibraryTab(QWidget):
         detail_layout.setSpacing(10)
         detail_layout.setContentsMargins(12, 12, 12, 12)
 
-        # 1. Cabecera Ejecutiva: Portada Grande (izquierda) + Selección y Metadatos (derecha)
+        # Cabecera Ejecutiva: Portada Grande (280x280 izquierda) + Selección y Metadatos (derecha)
         self.header_card = QFrame()
         self.header_card.setObjectName("metricCard")
         header_card_lay = QHBoxLayout(self.header_card)
         header_card_lay.setContentsMargins(10, 10, 10, 10)
         header_card_lay.setSpacing(14)
 
-        # Portada a la izquierda (Dimensiones ampliadas 280x280)
         self.cover_label = QLabel("[ Sin Portada ]\n\n1:1 Master Art")
         self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.cover_label.setFixedSize(280, 280)
@@ -158,7 +164,6 @@ class LibraryTab(QWidget):
         """)
         header_card_lay.addWidget(self.cover_label)
 
-        # Panel de Selección, Título y Metadatos Técnicos a la derecha
         self.meta_panel = QWidget()
         meta_panel_lay = QVBoxLayout(self.meta_panel)
         meta_panel_lay.setContentsMargins(0, 0, 0, 0)
@@ -182,10 +187,12 @@ class LibraryTab(QWidget):
         badges_lay.setContentsMargins(0, 2, 0, 2)
         badges_lay.setSpacing(6)
 
-        self.badge_ebu = QLabel("EBU R128 (-16 LUFS)")
+        self.badge_ebu = QLabel("DSP -1.0 dBTP")
         self.badge_ebu.setStyleSheet("background-color: #0c1523; border: 1px solid #1e3a5f; color: #38bdf8; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: Consolas, monospace;")
         self.badge_mp3 = QLabel("MP3 256K")
         self.badge_mp3.setStyleSheet("background-color: #0c1523; border: 1px solid #1e3a5f; color: #22c55e; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: Consolas, monospace;")
+        self.badge_m4b = QLabel("M4B CAPÍTULOS")
+        self.badge_m4b.setStyleSheet("background-color: #0c1523; border: 1px solid #1e3a5f; color: #10b981; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: Consolas, monospace;")
         self.badge_flac = QLabel("FLAC 24-BIT")
         self.badge_flac.setStyleSheet("background-color: #0c1523; border: 1px solid #1e3a5f; color: #a855f7; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: Consolas, monospace;")
         self.badge_mp4 = QLabel("KARAOKE MP4")
@@ -195,6 +202,7 @@ class LibraryTab(QWidget):
 
         badges_lay.addWidget(self.badge_ebu)
         badges_lay.addWidget(self.badge_mp3)
+        badges_lay.addWidget(self.badge_m4b)
         badges_lay.addWidget(self.badge_flac)
         badges_lay.addWidget(self.badge_mp4)
         badges_lay.addWidget(self.badge_engine)
@@ -211,10 +219,10 @@ class LibraryTab(QWidget):
         lbl_spec_title = QLabel("ESPECIFICACIONES DEL MÁSTER MULTIMEDIA")
         lbl_spec_title.setObjectName("metricTitle")
         self.lbl_spec_details = QLabel(
-            "• Estándar de Transmisión: EBU R128 (-16 LUFS Normalizado)\n"
-            "• Formatos Generados: MP3 256kbps + Master FLAC 24-bit sin pérdida\n"
-            "• Video Karaoke: MP4 (H.264 / AAC) con subtítulos sincronizados\n"
-            "• Motor de Síntesis: Kokoro Studio Neural 24kHz & Piper DirectML"
+            "• Cadena Acústica: HPF 80Hz + De-Esser + Compresor + Limitador -1.0 dBTP\n"
+            "• Formatos: MP3 256k + M4B con Capítulos + Master FLAC + Subtítulos SRT/VTT/LRC\n"
+            "• Video Karaoke: MP4 (16:9 / 9:16 Shorts / Audiograma Espectro)\n"
+            "• Motor de Síntesis: Kokoro Studio Neural 24kHz, Voces Clonadas & Piper DirectML"
         )
         self.lbl_spec_details.setStyleSheet("color: #8b949e; font-size: 11px; line-height: 1.35;")
         spec_lay.addWidget(lbl_spec_title)
@@ -251,7 +259,6 @@ class LibraryTab(QWidget):
         p_lay = QVBoxLayout(player_box)
         p_lay.setSpacing(8)
 
-        # Slider de posición y marcas de tiempo
         slider_row = QHBoxLayout()
         slider_row.setSpacing(8)
         self.lbl_cur_time = QLabel("00:00")
@@ -266,7 +273,6 @@ class LibraryTab(QWidget):
         slider_row.addWidget(self.lbl_total_time)
         p_lay.addLayout(slider_row)
 
-        # Botonera de control de transporte y volumen
         controls_row = QHBoxLayout()
         controls_row.setSpacing(8)
 
@@ -279,6 +285,12 @@ class LibraryTab(QWidget):
         self.btn_stop.setObjectName("secondaryActionButton")
         self.btn_stop.clicked.connect(self.stop_playback)
         controls_row.addWidget(self.btn_stop)
+
+        self.btn_play_trailer = QPushButton("[ ► ] Trailer 90s")
+        self.btn_play_trailer.setObjectName("actionButton")
+        self.btn_play_trailer.setToolTip("Escucha o genera el Audio-Trailer dramático de 90 segundos")
+        self.btn_play_trailer.clicked.connect(self.play_or_generate_trailer)
+        controls_row.addWidget(self.btn_play_trailer)
 
         lbl_vol = QLabel("[ Vol ]")
         lbl_vol.setStyleSheet("font-family: Consolas, monospace; font-size: 11px; color: #64748b;")
@@ -295,19 +307,29 @@ class LibraryTab(QWidget):
 
         # Botones de Acción de Archivos y Utilidades
         actions_grid = QHBoxLayout()
-        actions_grid.setSpacing(8)
+        actions_grid.setSpacing(6)
 
-        self.btn_open_video = QPushButton("[ ► ] Ver Video Karaoke")
+        self.btn_open_video = QPushButton("[ ► ] Video Karaoke")
         self.btn_open_video.setObjectName("actionButton")
         self.btn_open_video.clicked.connect(self.open_video)
 
-        self.btn_open_folder = QPushButton("[ ↗ ] Abrir Carpeta")
+        self.btn_open_folder = QPushButton("[ ↗ ] Carpeta")
         self.btn_open_folder.setObjectName("secondaryActionButton")
         self.btn_open_folder.clicked.connect(self.open_current_folder)
 
-        self.btn_change_cover = QPushButton("[ 🖼 ] Asignar Portada")
+        self.btn_change_cover = QPushButton("[ + ] Asignar Portada")
         self.btn_change_cover.setObjectName("secondaryActionButton")
         self.btn_change_cover.clicked.connect(self.change_cover_dialog)
+
+        self.btn_gen_cover_ai = QPushButton("[ ★ ] Portada IA")
+        self.btn_gen_cover_ai.setObjectName("actionButton")
+        self.btn_gen_cover_ai.setToolTip("Genera una portada editorial 1024x1024 con IA local para esta obra")
+        self.btn_gen_cover_ai.clicked.connect(self.generate_cover_ai_for_selected)
+
+        self.btn_open_subs = QPushButton("[ ⤓ ] Subtítulos / SEO")
+        self.btn_open_subs.setObjectName("secondaryActionButton")
+        self.btn_open_subs.setToolTip("Inspecciona los subtítulos (.SRT/.VTT/.LRC) y el paquete SEO/RSS")
+        self.btn_open_subs.clicked.connect(self.inspect_subtitles_and_seo)
 
         self.btn_load_to_reader = QPushButton("[ ↗ ] Cargar en Lector Rápido")
         self.btn_load_to_reader.setObjectName("actionButton")
@@ -322,21 +344,23 @@ class LibraryTab(QWidget):
         actions_grid.addWidget(self.btn_open_video)
         actions_grid.addWidget(self.btn_open_folder)
         actions_grid.addWidget(self.btn_change_cover)
+        actions_grid.addWidget(self.btn_gen_cover_ai)
+        actions_grid.addWidget(self.btn_open_subs)
         actions_grid.addWidget(self.btn_load_to_reader)
         actions_grid.addWidget(self.btn_delete_history)
         detail_layout.addLayout(actions_grid)
 
         # Módulo de Distribución Ejecutiva
-        self.dist_group = QGroupBox("Distribución y Plataformas")
+        self.dist_group = QGroupBox("Distribución, YouTube Timestamps y Podcast RSS")
         dist_lay = QHBoxLayout(self.dist_group)
         dist_lay.setContentsMargins(10, 8, 10, 8)
         dist_lay.setSpacing(8)
 
-        self.btn_youtube = QPushButton("[ ↗ ] Publicar en YouTube Studio")
+        self.btn_youtube = QPushButton("[ ↗ ] Publicar en YouTube Studio (SEO + Capítulos)")
         self.btn_youtube.setObjectName("brandButton")
         self.btn_youtube.clicked.connect(self.open_youtube_dialog)
 
-        self.btn_spotify = QPushButton("[ ↗ ] Publicar en Spotify / Podcasts")
+        self.btn_spotify = QPushButton("[ ↗ ] Publicar en Spotify / Podcast RSS")
         self.btn_spotify.setObjectName("brandButton")
         self.btn_spotify.clicked.connect(self.open_spotify_dialog)
 
@@ -347,8 +371,12 @@ class LibraryTab(QWidget):
         self.splitter.addWidget(self.detail_panel)
         main_layout.addWidget(self.splitter)
 
-        self.current_orientation = 'vertical'
-        self.set_orientation('vertical')
+        self.current_orientation = "vertical"
+        self.set_orientation("vertical")
+
+    def open_mobile_streaming_qr(self):
+        dlg = MobileStreamingDialog(self, biblioteca_dir=BIBLIOTECA_DIR)
+        dlg.exec()
 
     def set_orientation(self, mode: str):
         """Ajusta la orientación del reproductor y catálogo según la pantalla sin barras de scroll."""
@@ -367,12 +395,11 @@ class LibraryTab(QWidget):
         self.player.durationChanged.connect(self.on_duration_changed)
 
     def refresh_library(self):
-        # 1. Cargar audiolibros
         self.books = []
         if BIBLIOTECA_DIR.exists():
             for item in sorted(BIBLIOTECA_DIR.iterdir(), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True):
                 if item.is_dir() and item.name != "historial_lecturas":
-                    meta_files = list(item.glob("*_metadata.json"))
+                    meta_files = list(item.glob("*_metadata.json")) + list(item.glob("metadata.json"))
                     meta = {}
                     if meta_files:
                         try:
@@ -381,32 +408,35 @@ class LibraryTab(QWidget):
                         except Exception:
                             pass
 
-                    mp3_files = list(item.glob("*.mp3"))
+                    mp3_files = [p for p in item.glob("*.mp3") if p.name != "trailer_sinopsis.mp3"]
+                    m4b_files = list(item.glob("*.m4b"))
+                    trailer_file = item / "trailer_sinopsis.mp3"
                     mp4_files = list(item.glob("*.mp4"))
                     flac_files = list(item.glob("*.flac")) + list(item.glob("*.wav"))
                     cover_files = list(item.glob("cover.*"))
+                    srt_files = list(item.glob("*.srt"))
 
                     self.books.append({
                         "folder": item,
-                        "title": meta.get("output_name") or item.name,
+                        "title": meta.get("output_name") or meta.get("title") or item.name,
                         "duration": meta.get("duration_seconds", 0),
                         "created": meta.get("created_at", ""),
                         "mp3": mp3_files[0] if mp3_files else None,
+                        "m4b": m4b_files[0] if m4b_files else None,
+                        "trailer": trailer_file if trailer_file.exists() else None,
                         "mp4": mp4_files[0] if mp4_files else None,
                         "master": flac_files[0] if flac_files else None,
                         "cover": cover_files[0] if cover_files else None,
+                        "srt": srt_files[0] if srt_files else None,
                         "meta": meta,
                     })
 
-        # 2. Cargar historial infinito
         self.history_items = self.history_manager.list_entries()
-
         self.filter_items(self.search_edit.text())
 
     def filter_items(self, query: str = ""):
         q = query.lower().strip()
 
-        # Filtrar tabla de libros
         self.table.setRowCount(0)
         for b in self.books:
             title = b["title"]
@@ -427,13 +457,16 @@ class LibraryTab(QWidget):
             formats = []
             if b["mp3"]:
                 formats.append("[ MP3 ]")
+            if b.get("m4b"):
+                formats.append("[ M4B ]")
             if b["master"]:
                 formats.append("[ FLAC ]")
             if b["mp4"]:
                 formats.append("[ MP4 ]")
+            if b.get("srt"):
+                formats.append("[ SRT ]")
             self.table.setItem(row, 3, QTableWidgetItem(" ".join(formats)))
 
-        # Filtrar tabla de historial
         self.history_table.setRowCount(0)
         for h in self.history_items:
             txt = h.get("text", "")
@@ -461,13 +494,13 @@ class LibraryTab(QWidget):
         self.selected_book_data = book_data
         self.selected_history_data = None
 
-        # Cambiar modo visual a libro
         self.cover_label.setVisible(True)
         self.spec_card.setVisible(True)
-        if hasattr(self, 'badges_widget'):
-            self.badges_widget.setVisible(True)
-        if hasattr(self, 'btn_change_cover'):
-            self.btn_change_cover.setVisible(True)
+        self.badges_widget.setVisible(True)
+        self.btn_change_cover.setVisible(True)
+        self.btn_gen_cover_ai.setVisible(True)
+        self.btn_open_subs.setVisible(True)
+        self.btn_play_trailer.setVisible(True)
         self.text_preview.setVisible(False)
         self.btn_open_video.setVisible(True)
         self.dist_group.setVisible(True)
@@ -478,19 +511,19 @@ class LibraryTab(QWidget):
         meta = book_data["meta"]
         dur = meta.get("duration_seconds", 0)
         dur_str = str(timedelta(seconds=int(dur))) if dur else "--"
+        ch_count = len(meta.get("chapters_info", [])) or meta.get("chapters_count", 1)
         meta_text = (
             f"Voz: {meta.get('voice_key', 'Desconocida')}  •  "
-            f"Oraciones: {meta.get('total_utterances', '--')}  •  "
-            f"Duración: {dur_str}  •  Normalización: EBU R128 (-16 LUFS)\n"
+            f"Capítulos: {ch_count}  •  Oraciones: {meta.get('total_utterances', '--')}  •  "
+            f"Duración: {dur_str}\n"
             f"Directorio: {book_data['folder'].name}"
         )
         self.lbl_book_meta.setText(meta_text)
 
-        # Actualizar visibilidad de badges según formatos
-        if hasattr(self, 'badge_mp3'):
-            self.badge_mp3.setVisible(bool(book_data.get("mp3") and book_data["mp3"].exists()))
-            self.badge_flac.setVisible(bool(book_data.get("master") and book_data["master"].exists()))
-            self.badge_mp4.setVisible(bool(book_data.get("mp4") and book_data["mp4"].exists()))
+        self.badge_mp3.setVisible(bool(book_data.get("mp3") and book_data["mp3"].exists()))
+        self.badge_m4b.setVisible(bool(book_data.get("m4b") and book_data["m4b"].exists()))
+        self.badge_flac.setVisible(bool(book_data.get("master") and book_data["master"].exists()))
+        self.badge_mp4.setVisible(bool(book_data.get("mp4") and book_data["mp4"].exists()))
 
         if book_data["cover"] and book_data["cover"].exists():
             pix = QPixmap(str(book_data["cover"])).scaled(
@@ -498,10 +531,14 @@ class LibraryTab(QWidget):
             )
             self.cover_label.setPixmap(pix)
         else:
+            self.cover_label.setPixmap(QPixmap())
             self.cover_label.setText("[ Sin Portada ]\n\n1:1 Master Art")
 
         if book_data["mp3"] and book_data["mp3"].exists():
             self.player.setSource(QUrl.fromLocalFile(str(book_data["mp3"])))
+            self.btn_play.setEnabled(True)
+        elif book_data.get("m4b") and book_data["m4b"].exists():
+            self.player.setSource(QUrl.fromLocalFile(str(book_data["m4b"])))
             self.btn_play.setEnabled(True)
         elif book_data["master"] and book_data["master"].exists():
             self.player.setSource(QUrl.fromLocalFile(str(book_data["master"])))
@@ -525,13 +562,13 @@ class LibraryTab(QWidget):
         self.selected_history_data = h_data
         self.selected_book_data = None
 
-        # Cambiar modo visual a lectura rápida
         self.cover_label.setVisible(False)
         self.spec_card.setVisible(False)
-        if hasattr(self, 'badges_widget'):
-            self.badges_widget.setVisible(False)
-        if hasattr(self, 'btn_change_cover'):
-            self.btn_change_cover.setVisible(False)
+        self.badges_widget.setVisible(False)
+        self.btn_change_cover.setVisible(False)
+        self.btn_gen_cover_ai.setVisible(False)
+        self.btn_open_subs.setVisible(False)
+        self.btn_play_trailer.setVisible(False)
         self.text_preview.setVisible(True)
         self.text_preview.setPlainText(h_data.get("text", ""))
         self.btn_open_video.setVisible(False)
@@ -555,6 +592,114 @@ class LibraryTab(QWidget):
         else:
             self.btn_play.setEnabled(False)
 
+    def generate_cover_ai_for_selected(self):
+        """Genera una portada 1024x1024 con IA local para el audiolibro seleccionado."""
+        if not self.selected_book_data:
+            QMessageBox.information(self, "Generar Portada IA", "Selecciona primero un audiolibro del catálogo.")
+            return
+        folder: Path = self.selected_book_data["folder"]
+        title = self.selected_book_data["title"]
+        try:
+            dest = generate_audiobook_cover(
+                title=title,
+                author="GlobalTTS Studio",
+                style="epico",
+                output_path=folder / "cover.png",
+            )
+            self.selected_book_data["cover"] = dest
+            pix = QPixmap(str(dest)).scaled(
+                280, 280, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+            )
+            self.cover_label.setPixmap(pix)
+            QMessageBox.information(self, "Portada IA Generada", f"Portada 1024x1024 creada exitosamente:\n{dest}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Error en Portada IA", f"No se pudo generar la portada:\n{exc}")
+
+    def play_or_generate_trailer(self):
+        """Reproduce el Audio-Trailer de 90s o lo sintetiza bajo demanda si aún no existe."""
+        if not self.selected_book_data:
+            return
+        folder: Path = self.selected_book_data["folder"]
+        trailer_p = folder / "trailer_sinopsis.mp3"
+        if not trailer_p.exists():
+            meta = self.selected_book_data.get("meta", {})
+            src_file = meta.get("source_file", "")
+            v_key = meta.get("voice_key", "kokoro-ef_dora")
+            try:
+                from src.core.models import Chapter, Document
+                if src_file and Path(src_file).exists():
+                    from src.ingest.loader import load_document
+                    doc = load_document(src_file)
+                else:
+                    doc = Document(
+                        title=self.selected_book_data["title"],
+                        author="GlobalTTS Studio",
+                        language="es",
+                        chapters=(Chapter(title="Sinopsis", paragraphs=(f"Una obra fascinante titulada {self.selected_book_data['title']}.",)),),
+                        source_path="",
+                        source_sha256="",
+                    )
+                pipe = AudiobookPipeline(JobConfig(voice_key=v_key, output_dir=str(BIBLIOTECA_DIR)))
+                res = pipe.generate_standalone_trailer(
+                    doc=doc,
+                    book_folder=folder,
+                    style="epico",
+                    cover_image_path=self.selected_book_data.get("cover"),
+                )
+                if res:
+                    trailer_p = res
+            except Exception as exc:
+                QMessageBox.warning(self, "Aviso Trailer", f"No se pudo generar el trailer:\n{exc}")
+                return
+
+        if trailer_p.exists():
+            self.selected_book_data["trailer"] = trailer_p
+            self.player.setSource(QUrl.fromLocalFile(str(trailer_p)))
+            self.player.play()
+            self.btn_play.setText("[ || ] Pausa (Trailer)")
+
+    def inspect_subtitles_and_seo(self):
+        """Muestra o abre los subtítulos (.SRT/.VTT/.LRC/.ASS) y el paquete SEO/RSS."""
+        if not self.selected_book_data:
+            return
+        folder: Path = self.selected_book_data["folder"]
+        seo_file = folder / "youtube_spotify_seo.txt"
+        srt_files = list(folder.glob("*.srt"))
+        vtt_files = list(folder.glob("*.vtt"))
+        lrc_files = list(folder.glob("*.lrc"))
+        rss_file = folder / "podcast_rss.xml"
+        cap_dir = folder / "capitulos"
+
+        info_lines = [f"Carpeta del Proyecto: {folder}", ""]
+        if srt_files:
+            info_lines.append(f"• Subtítulos SRT: {srt_files[0].name}")
+        if vtt_files:
+            info_lines.append(f"• Subtítulos WebVTT: {vtt_files[0].name}")
+        if lrc_files:
+            info_lines.append(f"• Letras LRC: {lrc_files[0].name}")
+        if seo_file.exists():
+            info_lines.append(f"• Paquete SEO YouTube/Spotify: {seo_file.name}")
+        if rss_file.exists():
+            info_lines.append(f"• Feed Podcast RSS 2.0: {rss_file.name}")
+        if cap_dir.exists():
+            ch_mp3s = list(cap_dir.glob("*.mp3"))
+            info_lines.append(f"• Capítulos Divididos: {len(ch_mp3s)} pistas en /capitulos")
+
+        if seo_file.exists():
+            try:
+                seo_preview = seo_file.read_text(encoding="utf-8")[:700]
+                info_lines.extend(["", "--- VISTA PREVIA SEO & TIMESTAMPS ---", seo_preview])
+            except Exception:
+                pass
+
+        reply = QMessageBox.question(
+            self,
+            "Artefactos de Subtítulos, Capítulos & SEO",
+            "\n".join(info_lines) + "\n\n¿Deseas abrir la carpeta del proyecto para usar estos archivos?",
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            os.startfile(folder)
+
     def change_cover_dialog(self):
         """Permite asignar o actualizar la portada de un audiolibro existente."""
         if not self.selected_book_data:
@@ -565,7 +710,7 @@ class LibraryTab(QWidget):
             self,
             "Seleccionar Imagen de Portada (1:1 Recomendado)",
             "",
-            "Imágenes (*.png *.jpg *.jpeg *.webp)"
+            "Imágenes (*.png *.jpg *.jpeg *.webp)",
         )
         if file_path:
             import shutil
@@ -582,7 +727,7 @@ class LibraryTab(QWidget):
                 QMessageBox.information(
                     self,
                     "Portada Actualizada",
-                    f"La portada de '{self.selected_book_data['title']}' se actualizó correctamente."
+                    f"La portada de '{self.selected_book_data['title']}' se actualizó correctamente.",
                 )
             except Exception as e:
                 QMessageBox.critical(self, "Error al Guardar Portada", f"No se pudo copiar la imagen:\n{e}")
@@ -641,46 +786,53 @@ class LibraryTab(QWidget):
         if not self.selected_book_data:
             return
         b = self.selected_book_data
+        folder: Path = b["folder"]
         mp4_path = b.get("mp4")
         if not mp4_path or not mp4_path.exists():
             QMessageBox.warning(self, "Sin Video", "Este audiolibro no tiene un video karaoke generado.")
             return
 
-        title_text = f"Audiolibro Completo | {b['title']} (Voz IA en Español)"
-        desc_text = (
-            f"Audiolibro completo de '{b['title']}', narrado con inteligencia artificial local y alta fidelidad sonora.\n\n"
-            f"Marcas de tiempo:\n00:00 Inicio\n\n"
-            f"#Audiolibro #{b['title'].replace(' ', '')} #TTS #Literatura\n"
-            f"HUMAN AI SYNERGY BY BENNER CASTILLO - 2026®"
-        )
+        seo_file = folder / "youtube_spotify_seo.txt"
+        if seo_file.exists():
+            seo_text = seo_file.read_text(encoding="utf-8")
+        else:
+            seo_text = (
+                f"Título sugerido: Audiolibro Completo | {b['title']} (Voz IA en Español)\n\n"
+                f"Marcas de tiempo:\n00:00 Inicio\n\n"
+                f"HUMAN AI SYNERGY BY BENNER CASTILLO - 2026®"
+            )
 
         msg = (
-            f"PREPARACIÓN PARA YOUTUBE STUDIO:\n\n"
-            f"Archivo a subir:\n{mp4_path.name}\n\n"
-            f"Título sugerido:\n{title_text}\n\n"
-            f"Descripción y Marcas de Tiempo:\n{desc_text}\n\n"
-            f"¿Deseas abrir YouTube Studio en tu navegador y abrir la carpeta del libro?"
+            f"PAQUETE DE PUBLICACIÓN YOUTUBE STUDIO:\n\n"
+            f"Archivo de Video: {mp4_path.name}\n\n"
+            f"{seo_text[:900]}\n\n"
+            f"¿Deseas abrir YouTube Studio en tu navegador y mostrar la carpeta del libro?"
         )
-        reply = QMessageBox.question(self, "Publicar en YouTube", msg)
+        reply = QMessageBox.question(self, "Publicar en YouTube Studio", msg)
         if reply == QMessageBox.StandardButton.Yes:
             webbrowser.open("https://studio.youtube.com")
-            os.startfile(b["folder"])
+            os.startfile(folder)
 
     def open_spotify_dialog(self):
         if not self.selected_book_data:
             return
         b = self.selected_book_data
+        folder: Path = b["folder"]
         mp3_path = b.get("mp3")
         if not mp3_path or not mp3_path.exists():
             QMessageBox.warning(self, "Sin Audio Master", "No se encontró el archivo MP3 para podcast.")
             return
 
+        rss_file = folder / "podcast_rss.xml"
+        rss_status = f"Feed RSS 2.0 generado: {rss_file.name}" if rss_file.exists() else "Feed RSS listo en carpeta"
+
         msg = (
-            f"PREPARACIÓN PARA SPOTIFY / PODCASTS:\n\n"
-            f"Archivo Master MP3:\n{mp3_path.name} (Normalizado EBU R128 a 256k)\n\n"
-            f"¿Deseas abrir Spotify for Podcasters en tu navegador y la carpeta con el audio?"
+            f"PAQUETE PARA SPOTIFY FOR PODCASTERS & APPLE PODCASTS:\n\n"
+            f"• Master Audio: {mp3_path.name} (EBU R128 + Studio DSP -1.0 dBTP)\n"
+            f"• {rss_status}\n\n"
+            f"¿Deseas abrir Spotify for Podcasters en tu navegador y la carpeta del proyecto?"
         )
-        reply = QMessageBox.question(self, "Publicar en Spotify", msg)
+        reply = QMessageBox.question(self, "Publicar en Spotify / Podcasts", msg)
         if reply == QMessageBox.StandardButton.Yes:
             webbrowser.open("https://podcasters.spotify.com")
-            os.startfile(b["folder"])
+            os.startfile(folder)

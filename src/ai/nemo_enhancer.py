@@ -250,6 +250,53 @@ class MistralNeMoEnhancer:
             logger.warning("Fallo en análisis de diálogos con NeMo: %s. Usando segmentación fallback.", e)
             return fallback
 
+    def generate_synopsis_trailer_script(self, text: str, title: str = "Obra Maestra", style: str = "epico") -> str:
+        """Genera un guion de Audio-Trailer dramático (60-90s) con etiquetas prosódicas y Foley."""
+        sample = text.strip()[:5500]
+        if not sample:
+            return f"[sfx:transicion] [enfasis]{title}.[/enfasis] [pausa:0.8s] Una producción de GlobalTTS Studio."
+
+        sys_prompt = (
+            "Eres un Director de Trailers Cinematográficos y Productor Ejecutivo de Audible. "
+            "Usa <thinking>...</thinking> para identificar el gancho central, el conflicto y el clímax del texto, "
+            "y luego redacta ÚNICAMENTE un guion de Audio-Trailer en español de entre 80 y 140 palabras "
+            "con etiquetas prosódicas ([pausa:0.8s], [misterioso]...[/misterioso], [enfasis]...[/enfasis], "
+            "[lento]...[/lento], [sfx:transicion], [sfx:latido], [sfx:campana]). Prohibido incluir preámbulos."
+        )
+        user_prompt = (
+            f"TÍTULO DE LA OBRA: {title}\nESTILO: {style}\n\n"
+            f"FRAGMENTO DE LA OBRA:\n{sample}\n\n"
+            "Redacta el guion del Audio-Trailer promocional listo para locución profesional:"
+        )
+
+        if self.is_available():
+            try:
+                script = self._call_ollama(
+                    prompt=user_prompt,
+                    system_prompt=sys_prompt,
+                    temperature=0.5,
+                    top_p=0.9,
+                    num_ctx=4096,
+                )
+                if script and len(script.split()) >= 20:
+                    if "[sfx:" not in script.lower():
+                        script = f"[sfx:transicion] {script}"
+                    return script
+            except Exception as exc:
+                logger.warning("Aviso en generación de trailer con NeMo: %s. Usando motor extractivo.", exc)
+
+        # Motor determinista extractivo de alta intensidad dramática cuando Ollama no está activo
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?…])\s+", sample) if len(s.strip()) >= 35]
+        hook = sentences[0] if sentences else sample[:180]
+        climax = sentences[min(2, len(sentences) - 1)] if len(sentences) > 1 else ""
+        return (
+            f"[sfx:transicion] [misterioso]En un mundo donde cada palabra guarda un destino...[/misterioso] "
+            f"[pausa:0.7s] [enfasis]{title}.[/enfasis] [pausa:0.6s] "
+            f"{hook} [pausa:0.8s] "
+            f"{f'[lento]{climax}[/lento] [pausa:0.8s] ' if climax else ''}"
+            f"[sfx:campana] [enfasis]Descubre la experiencia completa en esta edición magistral de GlobalTTS Studio.[/enfasis]"
+        )
+
     def process(self, text: str, config: NarrationConfig) -> Union[str, Dict[str, Any]]:
         """Método de despacho unificado según la configuración de narración."""
         if not config.enabled or not text.strip():

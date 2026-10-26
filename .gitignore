@@ -18,5 +18,6 @@ playback.lock
 # Artefactos generados (audio, video, voces clonadas, trabajos)
 biblioteca/*
 !biblioteca/.gitkeep
+cache/
 models_link/
 scratch/

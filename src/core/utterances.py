@@ -134,7 +134,12 @@ def build_utterances(
                 segments = (Segment(text=paragraph),)
             for seg in segments:
                 if not seg.text:
-                    add_pause(seg.pause_s, ch_idx, par_idx)
+                    if getattr(seg, "sfx", ""):
+                        utterances.append(
+                            Utterance(f"[sfx:{seg.sfx}]", Style(), 0.15, ch_idx, par_idx)
+                        )
+                    else:
+                        add_pause(seg.pause_s, ch_idx, par_idx)
                     continue
                 for sentence in split_sentences(seg.text):
                     for piece in split_long_sentence(sentence, max_chars):

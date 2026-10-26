@@ -1,13 +1,12 @@
 """Pestaña de Lectura Rápida y Suite de Configuración Profesional para GlobalTTS.
 
 Incluye:
-- Lector rápido con caja de texto y scroll invisible para pegar y escuchar inmediatamente.
+- Lector rápido con caja de texto y scroll invisible para pegar, extraer URLs web o ejecutar OCR local.
 - Suite de Expresividad y Modo Narración con Mistral NeMo 12B local (11 estilos CO-STAR, 4 modos).
-- Controles de reproducción instantánea con Piper TTS local (100% offline).
-- Suite de configuración profesional: voces locales, velocidad, volumen, directorios.
+- Integración en vivo de Diccionario Fonético (Lexicon), Modulación Emocional, Efectos Foley SFX,
+  Masterización de Estudio DSP (-1.0 dBTP), Paisajes Sonoros con Audio Ducking y Clonación de Voz.
 - Gestión de atajos globales de AutoHotkey v2 (Texto + Click Izq + Espacio).
-- Inicio automático con Windows (abriendo la ventana al arrancar la PC).
-- Metadatos con firma institucional 'HUMAN AI SYNERGY BY BENNER CASTILLO'.
+- Inicio automático con Windows y metadatos con firma 'HUMAN AI SYNERGY BY BENNER CASTILLO - 2026®'.
 """
 from __future__ import annotations
 
@@ -20,8 +19,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import sounddevice as sd
 from PyQt6.QtCore import QObject, QThread, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -33,20 +32,24 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QScrollArea,
     QSlider,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
-import sounddevice as sd
-
 from src.ai.nemo_enhancer import MistralNeMoEnhancer, NarrationConfig
 from src.ai.piper_engine import PiperTtsEngine, list_available_piper_voices
 from src.ai.prompt_library import PromptLibrary
-from src.core.text_clean import clean_text_for_tts, make_filename_slug
+from src.audio.dsp_mastering import MasteringConfig, master_audio_track
+from src.audio.sfx_engine import inject_semantic_sfx_tags
+from src.audio.soundscape import SOUNDSCAPE_PRESETS, mix_voice_with_soundscape
+from src.core.emotion_analyzer import analyze_sentence_emotion
+from src.core.lexicon import PhoneticLexicon
+from src.core.text_clean import make_filename_slug
+from src.ingest.loader import load_document
 from src.markup.style import Style
+from src.ui.studio_dialogs import LexiconManagerDialog, UrlIngestDialog, VoiceClonerDialog
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 CONFIG_FILE = PROJECT_ROOT / "config.json"
@@ -85,37 +88,76 @@ class TtsWorkerSignals(QObject):
 
 
 class TtsPlayWorker(QThread):
-    def __init__(self, text: str, voice_key: str, speed: float, volume: float):
+    def __init__(
+        self,
+        text: str,
+        voice_key: str,
+        speed: float,
+        volume: float,
+        apply_lexicon: bool = True,
+        emotional_modulation: bool = True,
+        auto_sfx: bool = False,
+        dsp_mastering: bool = True,
+        soundscape_preset: str = "none",
+    ):
         super().__init__()
         self.text = text
         self.voice_key = voice_key
         self.speed = speed
         self.volume = volume
+        self.apply_lexicon = apply_lexicon
+        self.emotional_modulation = emotional_modulation
+        self.auto_sfx = auto_sfx
+        self.dsp_mastering = dsp_mastering
+        self.soundscape_preset = soundscape_preset
         self.signals = TtsWorkerSignals()
         self.is_interrupted = False
 
     def run(self):
         try:
             self.signals.started.emit()
+            proc_text = self.text
+            if self.auto_sfx:
+                proc_text = inject_semantic_sfx_tags(proc_text)
+            if self.apply_lexicon:
+                proc_text = PhoneticLexicon().apply(proc_text)
+
+            eff_speed = self.speed
+            eff_gain = 0.0
+            if self.emotional_modulation:
+                emo = analyze_sentence_emotion(proc_text)
+                eff_speed = max(0.55, min(1.9, eff_speed * emo.speed_multiplier))
+                eff_gain = emo.gain_db_delta
+
             engine = PiperTtsEngine(voice_key=self.voice_key)
-            style = Style(speed=self.speed)
-            samples = engine.synthesize(self.text, style=style)
+            style = Style(speed=eff_speed, gain_db=eff_gain)
+            samples = engine.synthesize(proc_text, style=style)
+
+            if self.dsp_mastering and len(samples) > 128:
+                samples = master_audio_track(samples, engine.sample_rate, MasteringConfig(enabled=True))
+
+            if self.soundscape_preset and self.soundscape_preset != "none" and len(samples) > 0:
+                samples = mix_voice_with_soundscape(
+                    voice_samples=samples,
+                    sample_rate=engine.sample_rate,
+                    preset=self.soundscape_preset,
+                )
 
             if self.volume != 1.0:
                 samples = samples * self.volume
 
-            # Guardar automáticamente en el historial infinito de lecturas
             if len(samples) > 0:
                 try:
                     from src.core.history import HistoryManager
                     hm = HistoryManager()
                     voice_meta = engine.available_voices.get(self.voice_key)
                     v_name = voice_meta.name if voice_meta else self.voice_key
+                    mono_samples = samples[:, 0] if samples.ndim == 2 else samples
                     hm.add_entry(
                         text=self.text,
                         voice_key=self.voice_key,
                         voice_name=v_name,
-                        samples=samples,
+                        samples=mono_samples,
                         sample_rate=engine.sample_rate,
                     )
                 except Exception:
@@ -176,7 +218,7 @@ class QuickReaderTab(QWidget):
 
     def load_config_values(self) -> dict:
         default_cfg = {
-            "voice": "es_MX-claude-high",
+            "voice": "kokoro-ef_dora",
             "speed_factor": 1.0,
             "volume": 100,
             "save_directory": str(Path.home() / "Downloads" / "TTS_Audios"),
@@ -185,7 +227,7 @@ class QuickReaderTab(QWidget):
             "enable_alt_space_fallback": True,
             "enable_save_hotkey": True,
             "start_with_windows": True,
-            "firma": "HUMAN AI SYNERGY BY BENNER CASTILLO"
+            "firma": "HUMAN AI SYNERGY BY BENNER CASTILLO",
         }
         if CONFIG_FILE.exists():
             try:
@@ -210,57 +252,39 @@ class QuickReaderTab(QWidget):
         r_lay.setContentsMargins(12, 10, 12, 10)
         r_lay.setSpacing(6)
 
-        # Cabecera
         header_row = QHBoxLayout()
         title_lbl = QLabel("Lector Rápido en Tiempo Real")
         title_lbl.setObjectName("titleLabel")
         header_row.addWidget(title_lbl)
 
-        self.lbl_status = QLabel("[ ACTIVO ] Motor Kokoro & Piper TTS Local (DirectML)")
+        self.lbl_status = QLabel("[ ACTIVO ] Motor Kokoro & Piper TTS Local (DirectML + DSP)")
         self.lbl_status.setStyleSheet("color: #22c55e; font-weight: 700; font-size: 11px; font-family: Consolas, monospace;")
         header_row.addWidget(self.lbl_status, alignment=Qt.AlignmentFlag.AlignRight)
         r_lay.addLayout(header_row)
 
         desc_lbl = QLabel(
-            "Pega texto aquí para lectura instantánea offline, o usa el atajo en cualquier app: "
-            "Texto seleccionado + Click Izq + Barra Espaciadora."
+            "Pega texto, extrae artículos web (URL) o escanea imágenes/PDFs con OCR local para lectura inmediata, "
+            "o usa el atajo global: Texto seleccionado + Click Izq + Barra Espaciadora."
         )
         desc_lbl.setObjectName("subtitleLabel")
         desc_lbl.setWordWrap(True)
         r_lay.addWidget(desc_lbl)
 
-        # Caja de texto con scroll invisible
         self.text_edit = QTextEdit()
         self.text_edit.setObjectName("quickTextBox")
-        self.text_edit.setPlaceholderText("Pega o escribe aquí cualquier texto para escucharlo o enriquecerlo con IA...")
+        self.text_edit.setPlaceholderText("Pega o escribe aquí cualquier texto, o usa [ ↗ Extraer URL ] / [ + OCR Imagen ]...")
         self.text_edit.textChanged.connect(self.on_text_changed)
         self.text_edit.setMinimumHeight(180)
-
-        # Ocultar visualmente la barra de desplazamiento manteniendo el scroll funcional
-        self.text_edit.verticalScrollBar().setStyleSheet("""
-            QScrollBar:vertical {
-                width: 0px;
-                height: 0px;
-                background: transparent;
-            }
-        """)
-        self.text_edit.horizontalScrollBar().setStyleSheet("""
-            QScrollBar:horizontal {
-                width: 0px;
-                height: 0px;
-                background: transparent;
-            }
-        """)
+        self.text_edit.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 0px; height: 0px; background: transparent; }")
+        self.text_edit.horizontalScrollBar().setStyleSheet("QScrollBar:horizontal { width: 0px; height: 0px; background: transparent; }")
         r_lay.addWidget(self.text_edit, stretch=1)
 
-        # Barra de información de texto
         info_row = QHBoxLayout()
         self.lbl_counter = QLabel("Caracteres: 0 | Palabras: 0 | Duración est.: ~0s")
         self.lbl_counter.setStyleSheet("color: #64748b; font-size: 11px; font-family: Consolas, monospace;")
         info_row.addWidget(self.lbl_counter)
         r_lay.addLayout(info_row)
 
-        # Botonera de acciones
         btns_row = QHBoxLayout()
         btns_row.setSpacing(6)
 
@@ -274,12 +298,24 @@ class QuickReaderTab(QWidget):
         self.btn_stop.clicked.connect(self.stop_text)
         btns_row.addWidget(self.btn_stop)
 
-        self.btn_paste = QPushButton("[ + ] Pegar Portapapeles")
+        self.btn_paste = QPushButton("[ + ] Pegar")
         self.btn_paste.setObjectName("actionButton")
         self.btn_paste.clicked.connect(self.paste_clipboard)
         btns_row.addWidget(self.btn_paste)
 
-        self.btn_clear = QPushButton("[ × ] Limpiar Texto")
+        self.btn_extract_url = QPushButton("[ ↗ ] Extraer URL Web")
+        self.btn_extract_url.setObjectName("actionButton")
+        self.btn_extract_url.setToolTip("Extrae el cuerpo limpio de cualquier artículo, blog o noticia web")
+        self.btn_extract_url.clicked.connect(self.open_url_extractor)
+        btns_row.addWidget(self.btn_extract_url)
+
+        self.btn_ocr_file = QPushButton("[ + ] OCR Imagen/PDF")
+        self.btn_ocr_file.setObjectName("secondaryActionButton")
+        self.btn_ocr_file.setToolTip("Extrae texto mediante OCR local WinRT de una imagen (.png/.jpg/.webp) o PDF escaneado")
+        self.btn_ocr_file.clicked.connect(self.open_ocr_file_dialog)
+        btns_row.addWidget(self.btn_ocr_file)
+
+        self.btn_clear = QPushButton("[ × ] Limpiar")
         self.btn_clear.setObjectName("secondaryActionButton")
         self.btn_clear.clicked.connect(self.text_edit.clear)
         btns_row.addWidget(self.btn_clear)
@@ -292,23 +328,41 @@ class QuickReaderTab(QWidget):
         r_lay.addLayout(btns_row)
 
         # =========================================================================
-        # SECCIÓN 2: EXPRESIVIDAD Y MODO NARRACIÓN (Mistral NeMo Local)
+        # SECCIÓN 2: EXPRESIVIDAD, FONÉTICA Y MODO NARRACIÓN (Mistral NeMo Local)
         # =========================================================================
-        self.ai_box = QGroupBox("Expresividad y Modo Narración (Mistral NeMo 12B Local)")
+        self.ai_box = QGroupBox("Expresividad, Fonética y Modo Narración (Mistral NeMo 12B Local)")
         ai_lay = QVBoxLayout(self.ai_box)
         ai_lay.setContentsMargins(10, 8, 10, 8)
-        ai_lay.setSpacing(6)
+        ai_lay.setSpacing(5)
 
-        self.chk_ai_enabled = QCheckBox("Activar Enriquecimiento / Modo Narración con IA")
+        top_ai_row = QHBoxLayout()
+        self.chk_ai_enabled = QCheckBox("Activar Modo Narración IA")
         self.chk_ai_enabled.toggled.connect(self.toggle_ai_panel)
-        ai_lay.addWidget(self.chk_ai_enabled)
+        top_ai_row.addWidget(self.chk_ai_enabled)
+
+        self.chk_lexicon = QCheckBox("Diccionario Fonético (Lexicon)")
+        self.chk_lexicon.setChecked(True)
+        top_ai_row.addWidget(self.chk_lexicon)
+
+        self.chk_emotion_mod = QCheckBox("Modulación Emocional Dinámica")
+        self.chk_emotion_mod.setChecked(True)
+        top_ai_row.addWidget(self.chk_emotion_mod)
+
+        self.chk_auto_sfx = QCheckBox("Efectos Foley / SFX Automáticos")
+        self.chk_auto_sfx.setChecked(False)
+        top_ai_row.addWidget(self.chk_auto_sfx)
+
+        btn_lex_dlg = QPushButton("[ ↗ ] Editar Lexicon")
+        btn_lex_dlg.setObjectName("secondaryActionButton")
+        btn_lex_dlg.clicked.connect(self.open_lexicon_dialog)
+        top_ai_row.addWidget(btn_lex_dlg)
+        ai_lay.addLayout(top_ai_row)
 
         self.ai_controls_frame = QFrame()
         ai_ctrl_lay = QVBoxLayout(self.ai_controls_frame)
         ai_ctrl_lay.setContentsMargins(0, 0, 0, 0)
         ai_ctrl_lay.setSpacing(5)
 
-        # Fila 1: Modo y Estilo
         row1 = QHBoxLayout()
         row1.addWidget(QLabel("Modo IA:"))
         self.combo_ai_mode = QComboBox()
@@ -325,7 +379,6 @@ class QuickReaderTab(QWidget):
         row1.addWidget(self.combo_ai_style, stretch=1)
         ai_ctrl_lay.addLayout(row1)
 
-        # Fila 2: Perspectiva y Tiempo verbal
         row2 = QHBoxLayout()
         row2.addWidget(QLabel("Perspectiva:"))
         self.combo_persona = QComboBox()
@@ -353,9 +406,9 @@ class QuickReaderTab(QWidget):
         ai_lay.addWidget(self.ai_controls_frame)
 
         # =========================================================================
-        # SECCIÓN 3: MOTOR DE VOZ LOCAL & MODULACIÓN
+        # SECCIÓN 3: MOTOR DE VOZ LOCAL, CLONACIÓN & MASTERIZACIÓN DSP
         # =========================================================================
-        self.voice_box = QGroupBox("Motor de Voz Local & Modulación (15 Voces Neurales)")
+        self.voice_box = QGroupBox("Motor de Voz Local, Clonación Biométrica & Masterización DSP")
         v_lay = QVBoxLayout(self.voice_box)
         v_lay.setContentsMargins(10, 8, 10, 8)
         v_lay.setSpacing(6)
@@ -370,9 +423,27 @@ class QuickReaderTab(QWidget):
         self.btn_test_voice.setObjectName("secondaryActionButton")
         self.btn_test_voice.clicked.connect(self.test_voice_sample)
         v_row1.addWidget(self.btn_test_voice)
+
+        self.btn_clone_voice = QPushButton("[ ★ ] Clonar Voz")
+        self.btn_clone_voice.setObjectName("actionButton")
+        self.btn_clone_voice.setToolTip("Crea un perfil de voz clonado a partir de cualquier grabación de referencia")
+        self.btn_clone_voice.clicked.connect(self.open_voice_cloner_dialog)
+        v_row1.addWidget(self.btn_clone_voice)
         v_lay.addLayout(v_row1)
 
-        # Fila combinada de Velocidad y Volumen (Ahorro inteligente de espacio vertical)
+        # Fila DSP y Soundscape
+        dsp_row = QHBoxLayout()
+        self.chk_dsp_master = QCheckBox("Masterización Estudio DSP (HPF 80Hz + De-Esser + Limitador -1.0 dBTP)")
+        self.chk_dsp_master.setChecked(True)
+        dsp_row.addWidget(self.chk_dsp_master)
+
+        dsp_row.addWidget(QLabel("Fondo Ambiental (Ducking):"))
+        self.combo_soundscape = QComboBox()
+        for k, label in SOUNDSCAPE_PRESETS.items():
+            self.combo_soundscape.addItem(label, k)
+        dsp_row.addWidget(self.combo_soundscape, stretch=1)
+        v_lay.addLayout(dsp_row)
+
         sliders_row = QHBoxLayout()
         sliders_row.setSpacing(12)
 
@@ -402,7 +473,6 @@ class QuickReaderTab(QWidget):
 
         v_lay.addLayout(sliders_row)
 
-        # Directorio de guardado
         dir_row = QHBoxLayout()
         dir_row.addWidget(QLabel("Guardar en:"))
         self.dir_edit = QLineEdit(self.config.get("save_directory", str(Path.home() / "Downloads" / "TTS_Audios")))
@@ -434,7 +504,7 @@ class QuickReaderTab(QWidget):
         hk_lay.addLayout(hk_top)
 
         shortcuts_info = QLabel(
-            "• Texto Seleccionado + Click Izq + Espacio: Lectura instantánea. | • Alt + Espacio: Atajo universal.\n" +
+            "• Texto Seleccionado + Click Izq + Espacio: Lectura instantánea. | • Alt + Espacio: Atajo universal.\n"
             "• Arrastre sobre texto + Soltar + Espacio: Lectura. | • Click Izq + S: Guardar MP3. | • Esc: Detener audio."
         )
         shortcuts_info.setStyleSheet("color: #64748b; font-size: 11px; line-height: 1.4;")
@@ -469,15 +539,50 @@ class QuickReaderTab(QWidget):
         lbl_sig.setStyleSheet("color: #38bdf8; font-size: 11px; font-weight: 700; letter-spacing: 0.5px;")
         s_lay.addWidget(lbl_sig)
 
-        # Aplicar orientación inicial
         self.current_orientation = "vertical"
         self.set_orientation("vertical")
+
+    def open_url_extractor(self):
+        dlg = UrlIngestDialog(self)
+        if dlg.exec() and dlg.extracted_text:
+            self.text_edit.setPlainText(dlg.extracted_text)
+            self.lbl_status.setText(f"[ URL IMPORTADA ] {dlg.extracted_title[:45]}")
+
+    def open_ocr_file_dialog(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Seleccionar Imagen o PDF Escaneado para OCR Local",
+            "",
+            "Imágenes y PDFs (*.png *.jpg *.jpeg *.webp *.bmp *.pdf)",
+        )
+        if not file_path:
+            return
+        try:
+            self.lbl_status.setText("[ OCR EN CURSO ] Analizando imagen/PDF con Windows.Media.Ocr...")
+            doc = load_document(file_path)
+            lines: list[str] = []
+            for ch in doc.chapters:
+                if ch.title and ch.title != doc.title:
+                    lines.append(ch.title)
+                lines.extend(ch.paragraphs)
+            full_txt = "\n\n".join(lines)
+            self.text_edit.setPlainText(full_txt)
+            self.lbl_status.setText(f"[ OCR COMPLETADO ] {len(full_txt)} caracteres extraídos de {Path(file_path).name}")
+        except Exception as exc:
+            QMessageBox.warning(self, "Aviso OCR Local", f"No se pudo extraer texto del archivo:\n{exc}")
+
+    def open_lexicon_dialog(self):
+        dlg = LexiconManagerDialog(self)
+        dlg.exec()
+
+    def open_voice_cloner_dialog(self):
+        dlg = VoiceClonerDialog(self, on_voices_changed=self.populate_voices)
+        dlg.exec()
 
     def set_orientation(self, mode: str):
         """Reorganiza los elementos manteniendo el orden secuencial estricto y sin generar scrollbars."""
         self.current_orientation = mode
 
-        # Unparentar de forma segura manteniendo vivo el objeto C++ bajo self
         for w in (self.reader_box, self.ai_box, self.voice_box, self.hk_box, self.sys_box):
             w.setParent(self)
 
@@ -490,11 +595,10 @@ class QuickReaderTab(QWidget):
         clear_layout_items(self.main_container_layout)
 
         if mode == "vertical":
-            # Modo Vertical: Disposición secuencial 1 -> 2 -> 3 -> 4 -> 5 ocupando todo el ancho
             self.main_container_layout.setContentsMargins(10, 6, 10, 6)
             self.main_container_layout.setSpacing(6)
 
-            self.text_edit.setMinimumHeight(220)
+            self.text_edit.setMinimumHeight(200)
             self.text_edit.setMaximumHeight(16777215)
 
             self.main_container_layout.addWidget(self.reader_box, stretch=4)
@@ -503,24 +607,21 @@ class QuickReaderTab(QWidget):
             self.main_container_layout.addWidget(self.hk_box, stretch=0)
             self.main_container_layout.addWidget(self.sys_box, stretch=0)
         else:
-            # Modo Horizontal: 2 columnas balanceadas para monitores panorámicos (16:9)
             self.main_container_layout.setContentsMargins(10, 8, 10, 8)
             self.main_container_layout.setSpacing(10)
 
-            self.text_edit.setMinimumHeight(240)
+            self.text_edit.setMinimumHeight(220)
             self.text_edit.setMaximumHeight(16777215)
 
             cols = QHBoxLayout()
             cols.setSpacing(12)
 
-            # Columna Izquierda: Lector Rápido en Vivo ocupando todo el alto disponible (52% ancho)
             left_col = QVBoxLayout()
             left_col.setContentsMargins(0, 0, 0, 0)
             left_col.setSpacing(0)
             left_col.addWidget(self.reader_box, stretch=1)
             cols.addLayout(left_col, stretch=52)
 
-            # Columna Derecha: Cockpit de Control con las 4 secciones balanceadas (48% ancho)
             right_col = QVBoxLayout()
             right_col.setContentsMargins(0, 0, 0, 0)
             right_col.setSpacing(8)
@@ -541,15 +642,15 @@ class QuickReaderTab(QWidget):
             self.btn_play.setText("[ ► ] Leer en Voz Alta")
 
     def populate_voices(self):
+        curr = self.voice_combo.currentData() if self.voice_combo.count() > 0 else self.config.get("voice", "kokoro-ef_dora")
         self.voice_combo.clear()
         voices = list_available_piper_voices()
-        current_voice = self.config.get("voice", "es_MX-claude-high")
 
         idx_to_select = 0
         for i, (key, profile) in enumerate(voices.items()):
             label = f"{profile.name} [{profile.sample_rate // 1000}kHz]"
             self.voice_combo.addItem(label, key)
-            if key == current_voice:
+            if key == curr:
                 idx_to_select = i
 
         if self.voice_combo.count() > 0:
@@ -639,7 +740,6 @@ class QuickReaderTab(QWidget):
             QMessageBox.information(self, "Texto Vacío", "Por favor escribe o pega texto para escuchar.")
             return
 
-        # Si el modo de IA está habilitado y el texto aún no tiene etiquetas prosódicas / narrativas inyectadas:
         if self.chk_ai_enabled.isChecked() and not ("[" in text and "]" in text):
             self.apply_ai_enhancement(auto_play=True)
             return
@@ -649,16 +749,26 @@ class QuickReaderTab(QWidget):
     def _start_audio_playback(self, text: str):
         self.stop_text()
 
-        voice_key = self.voice_combo.currentData() or "es_MX-claude-high"
+        voice_key = self.voice_combo.currentData() or "kokoro-ef_dora"
         speed = self.speed_slider.value() / 10.0
         volume = self.vol_slider.value() / 100.0
 
         self.btn_play.setEnabled(False)
         self.btn_play.setText("[ ► ] Reproduciendo...")
-        self.lbl_status.setText("[ EN REPRODUCCIÓN ] Audio expresivo en curso...")
+        self.lbl_status.setText("[ EN REPRODUCCIÓN ] Síntesis expresiva + Masterización DSP en curso...")
         self.lbl_status.setStyleSheet("color: #38bdf8; font-weight: 700; font-family: Consolas, monospace;")
 
-        self.play_worker = TtsPlayWorker(text=text, voice_key=voice_key, speed=speed, volume=volume)
+        self.play_worker = TtsPlayWorker(
+            text=text,
+            voice_key=voice_key,
+            speed=speed,
+            volume=volume,
+            apply_lexicon=self.chk_lexicon.isChecked(),
+            emotional_modulation=self.chk_emotion_mod.isChecked(),
+            auto_sfx=self.chk_auto_sfx.isChecked(),
+            dsp_mastering=self.chk_dsp_master.isChecked(),
+            soundscape_preset=self.combo_soundscape.currentData() or "none",
+        )
         self.play_worker.signals.finished.connect(self.on_play_finished)
         self.play_worker.signals.error.connect(self.on_play_error)
         self.play_worker.start()
@@ -685,7 +795,7 @@ class QuickReaderTab(QWidget):
         self.btn_play.setEnabled(True)
         btn_label = "[ ► ] Narrar y Escuchar con IA" if self.chk_ai_enabled.isChecked() else "[ ► ] Leer en Voz Alta"
         self.btn_play.setText(btn_label)
-        self.lbl_status.setText("[ ACTIVO ] Motor Piper TTS Local (DirectML)")
+        self.lbl_status.setText("[ ACTIVO ] Motor Kokoro & Piper TTS Local (DirectML + DSP)")
         self.lbl_status.setStyleSheet("color: #22c55e; font-weight: 700; font-family: Consolas, monospace;")
 
     def on_play_error(self, err_msg: str):
@@ -693,12 +803,14 @@ class QuickReaderTab(QWidget):
         QMessageBox.warning(self, "Error de Síntesis", f"Ocurrió un error al reproducir:\n{err_msg}")
 
     def test_voice_sample(self):
-        voice_key = self.voice_combo.currentData() or "es_MX-claude-high"
-        test_phrase = "Hola, esta es una prueba de la voz local configurada en GlobalTTS."
+        voice_key = self.voice_combo.currentData() or "kokoro-ef_dora"
+        test_phrase = "Hola, esta es una prueba de la voz local configurada con masterización de estudio en GlobalTTS."
         try:
             sd.stop()
             engine = PiperTtsEngine(voice_key=voice_key)
             samples = engine.synthesize(test_phrase, style=Style(speed=self.speed_slider.value() / 10.0))
+            if self.chk_dsp_master.isChecked() and len(samples) > 128:
+                samples = master_audio_track(samples, engine.sample_rate, MasteringConfig(enabled=True))
             vol = self.vol_slider.value() / 100.0
             if vol != 1.0:
                 samples = samples * vol
@@ -725,13 +837,25 @@ class QuickReaderTab(QWidget):
         filepath_mp3 = target_dir / filename_mp3
         temp_wav = target_dir / f"temp_{timestamp}_{slug}.wav"
 
-        voice_key = self.voice_combo.currentData() or "es_MX-claude-high"
+        voice_key = self.voice_combo.currentData() or "kokoro-ef_dora"
         speed = self.speed_slider.value() / 10.0
 
         try:
             import soundfile as sf
+            proc_text = text
+            if self.chk_auto_sfx.isChecked():
+                proc_text = inject_semantic_sfx_tags(proc_text)
+            if self.chk_lexicon.isChecked():
+                proc_text = PhoneticLexicon().apply(proc_text)
+
             engine = PiperTtsEngine(voice_key=voice_key)
-            samples = engine.synthesize(text, style=Style(speed=speed))
+            samples = engine.synthesize(proc_text, style=Style(speed=speed))
+            if self.chk_dsp_master.isChecked() and len(samples) > 128:
+                samples = master_audio_track(samples, engine.sample_rate, MasteringConfig(enabled=True))
+            bgm_preset = self.combo_soundscape.currentData() or "none"
+            if bgm_preset != "none" and len(samples) > 0:
+                samples = mix_voice_with_soundscape(samples, engine.sample_rate, preset=bgm_preset)
+
             vol = self.vol_slider.value() / 100.0
             if vol != 1.0:
                 samples = samples * vol
@@ -754,7 +878,7 @@ class QuickReaderTab(QWidget):
                 "-metadata", f"date={fecha_str}",
                 "-metadata", f"comment=Firma: {firma_str} | Fecha: {fecha_str} {hora_str} | Duración: {dur_fmt}",
                 "-metadata", f"copyright={firma_str} - 2026®",
-                str(filepath_mp3)
+                str(filepath_mp3),
             ]
             subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=cflags)
 
@@ -767,7 +891,6 @@ class QuickReaderTab(QWidget):
             tamano_bytes = filepath_mp3.stat().st_size if filepath_mp3.exists() else 0
             tamano_mb = f"{tamano_bytes / (1024 * 1024):.2f} MB"
 
-            # Metadatos JSON complementarios
             meta_json = target_dir / f"TTS_{timestamp}_{slug}_metadata.json"
             meta_dict = {
                 "firma": firma_str,
@@ -777,9 +900,11 @@ class QuickReaderTab(QWidget):
                 "tiempo_duracion_formato": dur_fmt,
                 "tamano_bytes": tamano_bytes,
                 "tamano_mb": tamano_mb,
-                "modelo_tts": f"Piper ({voice_key})",
+                "modelo_tts": f"Neural ({voice_key})",
                 "velocidad": speed,
-                "texto_origen": text[:200]
+                "dsp_mastering": self.chk_dsp_master.isChecked(),
+                "soundscape": bgm_preset,
+                "texto_origen": text[:200],
             }
             with open(meta_json, "w", encoding="utf-8") as f:
                 json.dump(meta_dict, f, indent=2, ensure_ascii=False)
@@ -789,7 +914,7 @@ class QuickReaderTab(QWidget):
                 "Audio Guardado",
                 f"Archivo MP3 guardado exitosamente:\n\n{filepath_mp3}\n\n"
                 f"Duración: {dur_fmt} | Tamaño: {tamano_mb}\n"
-                f"Firma: {firma_str}"
+                f"Firma: {firma_str}",
             )
         except Exception as e:
             QMessageBox.critical(self, "Error al guardar MP3", f"No se pudo generar el archivo:\n{e}")
@@ -821,7 +946,7 @@ class QuickReaderTab(QWidget):
             "enable_alt_space_fallback": True,
             "enable_save_hotkey": True,
             "start_with_windows": self.chk_startup.isChecked(),
-            "firma": "HUMAN AI SYNERGY BY BENNER CASTILLO"
+            "firma": "HUMAN AI SYNERGY BY BENNER CASTILLO",
         }
 
         try:
@@ -841,5 +966,5 @@ class QuickReaderTab(QWidget):
             f"Velocidad: {cfg['speed_factor']}x\n"
             f"Volumen: {cfg['volume']}%\n"
             f"Inicio con Windows: {'Activado' if cfg['start_with_windows'] else 'Desactivado'}\n"
-            f"Firma: HUMAN AI SYNERGY BY BENNER CASTILLO"
+            f"Firma: HUMAN AI SYNERGY BY BENNER CASTILLO",
         )

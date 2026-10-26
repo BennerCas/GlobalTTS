@@ -1,20 +1,23 @@
 """Aplicación residente en la bandeja del sistema (System Tray) con Generador en Lote y Reproductor de Biblioteca.
 
 Cumple con todos los requisitos:
-- Procesamiento en lote secuencial (1 por 1).
-- Enriquecimiento con Mistral NeMo local (modo narración en 1ra/2da/3ra persona y tiempos verbales).
+- Procesamiento en lote secuencial (1 por 1) con Pausa/Reanudación, Cancelación y Reordenamiento.
+- Ingesta OCR WinRT nativo para PDFs escaneados e imágenes + Extractor Web URL + Limpieza Editorial.
+- Enriquecimiento con Mistral NeMo local (modo narración en 1ra/2da/3ra persona, tiempos verbales y Trailer 90s).
 - Inserción de cuñas de audio con escucha previa instantánea.
-- Auto-casting multi-voz para diálogos y personajes.
-- Portada para carátula MP3 y fondo de video karaoke.
-- Subida a YouTube y Spotify / Podcasts.
-- Telemetría en tiempo real: cronómetro digital, ETA, velocidad y oración activa.
-- Pestaña de Biblioteca con reproductor multimedia integrado.
+- Auto-casting multi-voz para diálogos y personajes + Clonación Biométrica Local (CampPlus ONNX).
+- Portada IA 1024x1024 automática para carátula MP3/M4B y fondo de video karaoke.
+- Masterización DSP de 5 etapas, Efectos Foley SFX, Soundscapes Estéreo con Auto-Ducking, Lexicon Fonético y Prosodia Emocional.
+- Video Karaoke 16:9 / 9:16 con Espectrograma Showwaves, temas de subtítulos y exportación .SRT/.VTT/.LRC.
+- Servidor WiFi Mobile Streaming con QR nativo + Paquete SEO YouTube/Spotify y Feed RSS 2.0.
+- Telemetría en tiempo real: DirectML/Olive/RAM/Caché, cronómetro digital, ETA, velocidad y oración activa.
 """
 from __future__ import annotations
 
 import os
 import subprocess
 import sys
+import threading
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -57,10 +60,20 @@ from PyQt6.QtWidgets import (
 from src.ai.nemo_enhancer import MistralNeMoEnhancer, NarrationConfig
 from src.ai.piper_engine import PiperTtsEngine, list_available_piper_voices
 from src.ai.prompt_library import PromptLibrary
+from src.audio.karaoke import ASPECT_RATIOS, SUBTITLE_THEMES, VIDEO_BACKGROUNDS
+from src.audio.soundscape import SOUNDSCAPE_PRESETS
+from src.core.audio_cache import GLOBAL_AUDIO_CACHE
+from src.core.hardware_monitor import HardwareMonitor
 from src.core.job import AudiobookPipeline, InterstitialItem, JobConfig, JobMetadata
 from src.ui.library_tab import LibraryTab
 from src.ui.prompt_manager_dialog import PromptManagerDialog, PromptManagerWidget
 from src.ui.quick_reader_tab import QuickReaderTab
+from src.ui.studio_dialogs import (
+    LexiconManagerDialog,
+    MobileStreamingDialog,
+    UrlIngestDialog,
+    VoiceClonerDialog,
+)
 from src.ui.styles import DARK_THEME_QSS
 
 BIBLIOTECA_DIR = PROJECT_ROOT / "biblioteca"
@@ -105,16 +118,32 @@ class BatchPipelineWorker(QThread):
         self.configs = configs
         self.signals = BatchWorkerSignals()
         self.is_cancelled = False
+        self.pause_event = threading.Event()
+        self.pause_event.set()  # Despausado por defecto
+
+    def set_paused(self, paused: bool) -> None:
+        if paused:
+            self.pause_event.clear()
+        else:
+            self.pause_event.set()
+
+    def is_paused(self) -> bool:
+        return not self.pause_event.is_set()
+
+    def cancel(self) -> None:
+        self.is_cancelled = True
+        self.pause_event.set()
 
     def run(self):
         results = []
         try:
-            total_items = len(self.configs)
             for idx, cfg in enumerate(self.configs):
+                self.pause_event.wait()
                 if self.is_cancelled:
                     break
 
-                self.signals.item_started.emit(idx, Path(cfg.source_file).name)
+                src_label = cfg.source_file if cfg.source_file.startswith(("http://", "https://")) else Path(cfg.source_file).name
+                self.signals.item_started.emit(idx, src_label)
                 pipeline = AudiobookPipeline(cfg)
 
                 def stage_cb(stg: str, desc: str, pct: float):
@@ -124,7 +153,11 @@ class BatchPipelineWorker(QThread):
                     short_text = (utt.text[:65] + "...") if len(utt.text) > 65 else utt.text
                     self.signals.progress.emit(current, total, short_text)
 
-                meta = pipeline.run(progress_callback=prog_cb, stage_callback=stage_cb)
+                meta = pipeline.run(
+                    progress_callback=prog_cb,
+                    stage_callback=stage_cb,
+                    pause_event=self.pause_event,
+                )
                 results.append(meta)
                 self.signals.item_finished.emit(idx, meta)
 
@@ -134,7 +167,7 @@ class BatchPipelineWorker(QThread):
 
 
 class MainWindow(QDialog):
-    """Ventana Principal con Pestañas: Generador & Lotes, Biblioteca y Prompts Maestros."""
+    """Ventana Principal con Pestañas: Lectura Rápida, Generador & Lotes, Biblioteca y Prompts Maestros."""
 
     def __init__(self, initial_file: Optional[str] = None, tray_icon: Optional[QSystemTrayIcon] = None, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -145,7 +178,7 @@ class MainWindow(QDialog):
             | Qt.WindowType.WindowCloseButtonHint
         )
         self.setWindowTitle("GlobalTTS — Sistema Integral de Audiolibros, Video Karaoke & Lectura en Vivo")
-        
+
         # Adaptabilidad total a la pantalla disponible (Vertical o Horizontal, respetando barra de tareas)
         screen = QApplication.primaryScreen()
         if screen:
@@ -161,17 +194,26 @@ class MainWindow(QDialog):
         self.worker: Optional[BatchPipelineWorker] = None
         self.last_results: list[JobMetadata] = []
         self.prompt_library = PromptLibrary()
+        self.custom_bgm_path: Optional[str] = None
 
-        # Telemetría
+        # Telemetría de proceso y hardware
+        self.hw_monitor = HardwareMonitor()
         self.start_timestamp: Optional[float] = None
         self.timer = QTimer(self)
         self.timer.setInterval(100)
         self.timer.timeout.connect(self.update_timer_tick)
+
+        self.hw_timer = QTimer(self)
+        self.hw_timer.setInterval(2000)
+        self.hw_timer.timeout.connect(self.update_hw_telemetry)
+        self.hw_timer.start()
+
         self.current_utt_count = 0
         self.total_utts = 0
         self.voices_dict = list_available_piper_voices()
 
         self.init_ui()
+        self.update_hw_telemetry()
         self.apply_orientation(force=True)
 
         if initial_file:
@@ -183,12 +225,13 @@ class MainWindow(QDialog):
         main_layout.setContentsMargins(14, 14, 14, 10)
         main_layout.setSpacing(8)
 
-        # Barra Superior de Control y Minimizado
+        # Barra Superior de Control, Telemetría de Hardware y Accesos de Estudio
         top_bar = QHBoxLayout()
+        top_bar.setSpacing(6)
         title_group = QVBoxLayout()
         app_title = QLabel("GlobalTTS — Suite Integral de Voz, Audiolibros & Videos Karaoke")
         app_title.setObjectName("titleLabel")
-        app_sub = QLabel("100% Offline • Costo Cero • Aceleración DirectML & Modelos Locales")
+        app_sub = QLabel("100% Offline • Costo Cero • Aceleración DirectML, DSP Mastering & Clonación ONNX")
         app_sub.setObjectName("subtitleLabel")
         title_group.addWidget(app_title)
         title_group.addWidget(app_sub)
@@ -196,13 +239,45 @@ class MainWindow(QDialog):
 
         top_bar.addStretch()
 
+        self.lbl_hw_telemetry = QLabel("DirectML • CPU: --% • RAM: -- GB • Caché: -- MB")
+        self.lbl_hw_telemetry.setStyleSheet(
+            "background-color: #12161f; color: #58a6ff; border: 1px solid #21262d; "
+            "border-radius: 5px; padding: 4px 8px; font-size: 11px; font-weight: 600;"
+        )
+        self.lbl_hw_telemetry.setToolTip("Telemetría de Hardware y Runtime ONNX/DirectML en Tiempo Real")
+        top_bar.addWidget(self.lbl_hw_telemetry)
+
+        self.btn_top_wifi = QPushButton("[ ↗ ] WiFi QR")
+        self.btn_top_wifi.setObjectName("secondaryActionButton")
+        self.btn_top_wifi.setToolTip("Abrir Servidor Local de Streaming Móvil con Código QR")
+        self.btn_top_wifi.clicked.connect(self.open_mobile_streaming_dialog)
+        top_bar.addWidget(self.btn_top_wifi)
+
+        self.btn_top_lexicon = QPushButton("[ ↗ ] Lexicon")
+        self.btn_top_lexicon.setObjectName("secondaryActionButton")
+        self.btn_top_lexicon.setToolTip("Diccionario Fonético Personalizado y Pronunciación")
+        self.btn_top_lexicon.clicked.connect(self.open_lexicon_dialog)
+        top_bar.addWidget(self.btn_top_lexicon)
+
+        self.btn_top_cloner = QPushButton("[ ★ ] Clonar Voz")
+        self.btn_top_cloner.setObjectName("secondaryActionButton")
+        self.btn_top_cloner.setToolTip("Clonador Biométrico de Voz Local (CampPlus ONNX)")
+        self.btn_top_cloner.clicked.connect(self.open_voice_cloner_dialog)
+        top_bar.addWidget(self.btn_top_cloner)
+
+        self.btn_top_cache = QPushButton("[ × ] Caché")
+        self.btn_top_cache.setObjectName("secondaryActionButton")
+        self.btn_top_cache.setToolTip("Purgar caché en disco de segmentos de voz sintetizados")
+        self.btn_top_cache.clicked.connect(self.clear_audio_cache_action)
+        top_bar.addWidget(self.btn_top_cache)
+
         self.btn_orientation = QPushButton("[ ↕ ] Modo: Auto (Vertical)")
         self.btn_orientation.setObjectName("secondaryActionButton")
         self.btn_orientation.setToolTip("Alterna la distribución de la app entre Vertical (Monitores Retrato) y Horizontal (Panorámico)")
         self.btn_orientation.clicked.connect(self.cycle_orientation)
         top_bar.addWidget(self.btn_orientation)
 
-        self.btn_minimize = QPushButton("[ _ ] Minimizar a Bandeja")
+        self.btn_minimize = QPushButton("[ _ ] Minimizar")
         self.btn_minimize.setObjectName("actionButton")
         self.btn_minimize.setToolTip("Oculta la ventana en la barra de herramientas del sistema")
         self.btn_minimize.clicked.connect(self.minimize_to_tray)
@@ -224,6 +299,7 @@ class MainWindow(QDialog):
 
         # Pestaña 3: Biblioteca & Reproductor
         self.tab_library = LibraryTab()
+        self.tab_library.load_text_requested.connect(self.on_library_load_text_requested)
         self.tabs.addTab(self.tab_library, "BIBLIOTECA & REPRODUCTOR")
 
         # Pestaña 4: Gestor de Prompts Maestros & Estilos IA
@@ -238,6 +314,55 @@ class MainWindow(QDialog):
         footer_lbl.setObjectName("footerLabel")
         footer_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(footer_lbl)
+
+    def update_hw_telemetry(self):
+        try:
+            snap = self.hw_monitor.snapshot()
+            self.lbl_hw_telemetry.setText(snap.format_badge_text())
+        except Exception:
+            pass
+
+    def open_mobile_streaming_dialog(self):
+        dlg = MobileStreamingDialog(parent=self)
+        dlg.exec()
+
+    def open_lexicon_dialog(self):
+        dlg = LexiconManagerDialog(parent=self)
+        dlg.exec()
+
+    def open_voice_cloner_dialog(self):
+        dlg = VoiceClonerDialog(parent=self)
+        dlg.voice_cloned.connect(lambda _: self.refresh_all_voices())
+        dlg.exec()
+        self.refresh_all_voices()
+
+    def refresh_all_voices(self):
+        self.voices_dict = list_available_piper_voices()
+        curr = self.voice_combo.currentData()
+        self.voice_combo.clear()
+        for k, v in self.voices_dict.items():
+            tag = "24kHz Studio" if v.engine in ("kokoro", "cloned") else f"{v.sample_rate // 1000}kHz"
+            self.voice_combo.addItem(f"{v.name} [{tag}]", k)
+        idx = self.voice_combo.findData(curr)
+        if idx >= 0:
+            self.voice_combo.setCurrentIndex(idx)
+        self.populate_voice_pool_table()
+        if hasattr(self, "tab_quick") and hasattr(self.tab_quick, "populate_voices"):
+            self.tab_quick.populate_voices()
+
+    def clear_audio_cache_action(self):
+        removed = GLOBAL_AUDIO_CACHE.clear()
+        self.update_hw_telemetry()
+        QMessageBox.information(
+            self,
+            "Caché de Audio Purgada",
+            f"Se eliminaron {removed} segmentos de audio en caché correctamente."
+        )
+
+    def on_library_load_text_requested(self, text: str, title: str):
+        if hasattr(self, "tab_quick"):
+            self.tab_quick.text_edit.setPlainText(text)
+            self.tabs.setCurrentIndex(0)
 
     def minimize_to_tray(self):
         self.hide()
@@ -261,26 +386,72 @@ class MainWindow(QDialog):
         event.ignore()
         self.minimize_to_tray()
 
+    def render_batch_table(self):
+        self.batch_table.setRowCount(0)
+        for idx, item in enumerate(self.batch_files):
+            item["row"] = idx
+            self.batch_table.insertRow(idx)
+            src = item["path"]
+            disp_name = src if src.startswith(("http://", "https://")) else Path(src).name
+            self.batch_table.setItem(idx, 0, QTableWidgetItem(disp_name))
+            self.batch_table.setItem(idx, 1, QTableWidgetItem(item.get("voice_label", self.voice_combo.currentText())))
+            self.batch_table.setItem(idx, 2, QTableWidgetItem(item.get("status", "Pendiente")))
+
     def remove_selected_file(self):
         row = self.batch_table.currentRow()
         if 0 <= row < len(self.batch_files):
             self.batch_files.pop(row)
             self.render_batch_table()
 
+    def move_selected_file_up(self):
+        row = self.batch_table.currentRow()
+        if 0 < row < len(self.batch_files):
+            self.batch_files[row - 1], self.batch_files[row] = self.batch_files[row], self.batch_files[row - 1]
+            self.render_batch_table()
+            self.batch_table.selectRow(row - 1)
+
+    def move_selected_file_down(self):
+        row = self.batch_table.currentRow()
+        if 0 <= row < len(self.batch_files) - 1:
+            self.batch_files[row + 1], self.batch_files[row] = self.batch_files[row], self.batch_files[row + 1]
+            self.render_batch_table()
+            self.batch_table.selectRow(row + 1)
+
+    def open_url_ingest_dialog(self):
+        dlg = UrlIngestDialog(parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.extracted_text:
+            # Guardar artículo extraído como archivo .txt listo para el lote
+            from src.ingest.loader import slugify
+            slug = slugify(dlg.extracted_title or "articulo_web")
+            ingest_dir = BIBLIOTECA_DIR / "_ingesta_web"
+            ingest_dir.mkdir(parents=True, exist_ok=True)
+            out_txt = ingest_dir / f"{slug}.txt"
+            out_txt.write_text(f"# {dlg.extracted_title}\n\n{dlg.extracted_text}", encoding="utf-8")
+            self.add_file_to_batch(str(out_txt))
+
     def show_distribution_dialog(self, platform: str):
-        folder = self.last_results[-1].document_folder if self.last_results else str(BIBLIOTECA_DIR)
+        folder = Path(self.last_results[-1].document_folder) if self.last_results else BIBLIOTECA_DIR
+        seo_path = folder / "youtube_spotify_seo.txt"
+        rss_path = folder / "podcast_rss.xml"
+        extra_info = ""
+        if seo_path.exists():
+            extra_info += f"\n• Descripción SEO y Timestamps: {seo_path.name}"
+        if rss_path.exists():
+            extra_info += f"\n• Feed Podcast RSS 2.0: {rss_path.name}"
+
         QMessageBox.information(
             self,
             f"Distribución a {platform}",
             f"Listo para publicar en {platform}.\n\n"
-            f"Los audios cumplen con el estándar EBU R128 (-16 LUFS) y los videos están codificados en H.264/AAC con subtítulos karaoke.\n\n"
+            f"Los audios cumplen con el estándar EBU R128 (-16 LUFS), Masterización DSP (-1.0 dBTP) y los videos están codificados en H.264/AAC con subtítulos karaoke.{extra_info}\n\n"
             f"Carpeta de entrega: {folder}"
         )
+        if seo_path.exists():
+            os.startfile(str(seo_path))
 
     def get_effective_orientation(self) -> str:
         if self.orientation_mode != "auto":
             return self.orientation_mode
-        # Detectar monitor o ventana vertical si la altura es mayor que el ancho o ancho <= 1250px
         return "vertical" if self.height() >= self.width() or self.width() <= 1250 else "horizontal"
 
     def cycle_orientation(self):
@@ -338,32 +509,58 @@ class MainWindow(QDialog):
         # =========================================================================
         # SECCIÓN 1: ARCHIVOS EN LOTE (batch_group)
         # =========================================================================
-        self.batch_group = QGroupBox("Archivos a Procesar (Procesamiento en Lote 1 por 1)")
+        self.batch_group = QGroupBox("Archivos e Ingesta Inteligente (PDF / EPUB / TXT / OCR Imágenes / Web URL)")
         batch_lay = QVBoxLayout(self.batch_group)
         batch_lay.setContentsMargins(10, 8, 10, 8)
         batch_lay.setSpacing(6)
 
         btn_row = QHBoxLayout()
-        add_files_btn = QPushButton("[ + ] Agregar Archivos...")
+        btn_row.setSpacing(5)
+        add_files_btn = QPushButton("[ + ] Archivos / OCR...")
         add_files_btn.setObjectName("actionButton")
         add_files_btn.clicked.connect(self.select_files)
         btn_row.addWidget(add_files_btn)
 
-        remove_btn = QPushButton("[ − ] Quitar Selección")
+        add_url_btn = QPushButton("[ ↗ ] Extraer URL Web")
+        add_url_btn.setObjectName("secondaryActionButton")
+        add_url_btn.setToolTip("Extraer artículo limpio desde una URL web y añadirlo a la cola")
+        add_url_btn.clicked.connect(self.open_url_ingest_dialog)
+        btn_row.addWidget(add_url_btn)
+
+        up_btn = QPushButton("[ ↑ ]")
+        up_btn.setObjectName("secondaryActionButton")
+        up_btn.setToolTip("Subir prioridad en la cola")
+        up_btn.clicked.connect(self.move_selected_file_up)
+        btn_row.addWidget(up_btn)
+
+        down_btn = QPushButton("[ ↓ ]")
+        down_btn.setObjectName("secondaryActionButton")
+        down_btn.setToolTip("Bajar prioridad en la cola")
+        down_btn.clicked.connect(self.move_selected_file_down)
+        btn_row.addWidget(down_btn)
+
+        remove_btn = QPushButton("[ − ] Quitar")
         remove_btn.setObjectName("secondaryActionButton")
         remove_btn.clicked.connect(self.remove_selected_file)
         btn_row.addWidget(remove_btn)
 
-        clear_btn = QPushButton("[ × ] Limpiar Todo")
+        clear_btn = QPushButton("[ × ] Limpiar")
         clear_btn.setObjectName("secondaryActionButton")
         clear_btn.clicked.connect(self.clear_batch)
         btn_row.addWidget(clear_btn)
+
         btn_row.addStretch()
+
+        self.chk_clean_editorial = QCheckBox("Limpieza Editorial")
+        self.chk_clean_editorial.setChecked(True)
+        self.chk_clean_editorial.setToolTip("Elimina numeración de páginas, cabeceras repetidas, notas al pie [1] y ruido académico")
+        btn_row.addWidget(self.chk_clean_editorial)
+
         batch_lay.addLayout(btn_row)
 
         self.batch_table = QTableWidget()
         self.batch_table.setColumnCount(3)
-        self.batch_table.setHorizontalHeaderLabels(["Archivo de Origen", "Voz Asignada", "Estado"])
+        self.batch_table.setHorizontalHeaderLabels(["Archivo / Fuente de Origen", "Voz Asignada", "Estado"])
         self.batch_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.batch_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.batch_table.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 0px; background: transparent; }")
@@ -372,7 +569,7 @@ class MainWindow(QDialog):
         # =========================================================================
         # SECCIÓN 2: PORTADA Y CUÑAS INTERSTICIALES (extra_group)
         # =========================================================================
-        self.extra_group = QGroupBox("Portada y Cuñas Intersticiales (Radio / Jingles / Separadores)")
+        self.extra_group = QGroupBox("Portada Editorial IA, Trailer 90s y Cuñas Intersticiales")
         extra_lay = QVBoxLayout(self.extra_group)
         extra_lay.setContentsMargins(10, 8, 10, 8)
         extra_lay.setSpacing(6)
@@ -380,12 +577,20 @@ class MainWindow(QDialog):
         cover_row = QHBoxLayout()
         cover_row.addWidget(QLabel("Portada:"))
         self.cover_edit = QLineEdit()
-        self.cover_edit.setPlaceholderText("Ruta a imagen de portada (.png, .jpg)... opcional")
+        self.cover_edit.setPlaceholderText("Ruta a portada (.png, .jpg) o vacía para Auto-Portada IA 1024x1024...")
         btn_cover = QPushButton("Examinar...")
         btn_cover.setObjectName("secondaryActionButton")
         btn_cover.clicked.connect(self.select_cover_image)
+        self.chk_auto_cover_ai = QCheckBox("Portada IA 1024x1024")
+        self.chk_auto_cover_ai.setChecked(True)
+        self.chk_auto_cover_ai.setToolTip("Genera automáticamente una portada artística de 1024x1024 si no se especifica archivo")
+        self.chk_generate_trailer = QCheckBox("Trailer 90s")
+        self.chk_generate_trailer.setChecked(True)
+        self.chk_generate_trailer.setToolTip("Genera un Audio-Trailer dramático (trailer_sinopsis.mp3) con voz de locutor")
         cover_row.addWidget(self.cover_edit, stretch=1)
         cover_row.addWidget(btn_cover)
+        cover_row.addWidget(self.chk_auto_cover_ai)
+        cover_row.addWidget(self.chk_generate_trailer)
         extra_lay.addLayout(cover_row)
 
         cunas_hdr = QHBoxLayout()
@@ -443,7 +648,7 @@ class MainWindow(QDialog):
         # =========================================================================
         # SECCIÓN 3: VOCES Y AUTO-CASTING MULTI-VOZ (voice_group)
         # =========================================================================
-        self.voice_group = QGroupBox("Voces y Auto-Casting Multi-Voz (15 Voces Neurales)")
+        self.voice_group = QGroupBox("Voces Neurales, Clonación Biométrica y Auto-Casting Multi-Voz")
         voice_lay = QVBoxLayout(self.voice_group)
         voice_lay.setContentsMargins(10, 8, 10, 8)
         voice_lay.setSpacing(6)
@@ -452,14 +657,19 @@ class MainWindow(QDialog):
         v_main_row.addWidget(QLabel("Voz Principal (Narrador):"))
         self.voice_combo = QComboBox()
         for k, v in self.voices_dict.items():
-            tag = "24kHz Studio" if v.engine == "kokoro" else f"{v.sample_rate // 1000}kHz"
+            tag = "24kHz Studio" if v.engine in ("kokoro", "cloned") else f"{v.sample_rate // 1000}kHz"
             self.voice_combo.addItem(f"{v.name} [{tag}]", k)
-        
+
         default_pref = "kokoro-ef_dora" if "kokoro-ef_dora" in self.voices_dict else "es_MX-claude-high"
         default_idx = self.voice_combo.findData(default_pref)
         if default_idx >= 0:
             self.voice_combo.setCurrentIndex(default_idx)
         v_main_row.addWidget(self.voice_combo, stretch=1)
+
+        btn_clone_gen = QPushButton("[ ★ ] Clonar Voz...")
+        btn_clone_gen.setObjectName("secondaryActionButton")
+        btn_clone_gen.clicked.connect(self.open_voice_cloner_dialog)
+        v_main_row.addWidget(btn_clone_gen)
         voice_lay.addLayout(v_main_row)
 
         pool_hdr = QHBoxLayout()
@@ -566,20 +776,80 @@ class MainWindow(QDialog):
         ai_lay.addWidget(self.ai_options_frame)
 
         # =========================================================================
-        # SECCIÓN 5: FORMATOS DE SALIDA (out_group)
+        # SECCIÓN 5: FORMATOS DE SALIDA, ACÚSTICA Y VIDEO KARAOKE (out_group)
         # =========================================================================
-        self.out_group = QGroupBox("Formatos a Generar")
-        out_lay = QHBoxLayout(self.out_group)
-        out_lay.setContentsMargins(10, 6, 10, 6)
-        self.chk_mp3 = QCheckBox("Audio MP3 (256k EBU R128)")
+        self.out_group = QGroupBox("Formatos Master, Acústica DSP, Soundscapes & Video Karaoke")
+        out_main_lay = QVBoxLayout(self.out_group)
+        out_main_lay.setContentsMargins(10, 6, 10, 6)
+        out_main_lay.setSpacing(5)
+
+        out_row1 = QHBoxLayout()
+        out_row1.setSpacing(8)
+        self.chk_mp3 = QCheckBox("MP3 (EBU R128)")
         self.chk_mp3.setChecked(True)
-        self.chk_video = QCheckBox("Video Karaoke (MP4 pantalla negra)")
+        self.chk_m4b = QCheckBox(".M4B (Capítulos)")
+        self.chk_m4b.setChecked(True)
+        self.chk_split_chapters = QCheckBox("Capítulos MP3")
+        self.chk_split_chapters.setChecked(True)
+        self.chk_video = QCheckBox("Video Karaoke MP4")
         self.chk_video.setChecked(True)
-        self.chk_flac = QCheckBox("Master FLAC sin pérdida")
+        self.chk_flac = QCheckBox("FLAC")
         self.chk_flac.setChecked(True)
-        out_lay.addWidget(self.chk_mp3)
-        out_lay.addWidget(self.chk_video)
-        out_lay.addWidget(self.chk_flac)
+        self.chk_dsp = QCheckBox("DSP Mastering")
+        self.chk_dsp.setChecked(True)
+        self.chk_sfx = QCheckBox("Foley SFX")
+        self.chk_sfx.setChecked(True)
+        self.chk_lex_emo = QCheckBox("Lexicon + Emoción")
+        self.chk_lex_emo.setChecked(True)
+
+        for chk in (
+            self.chk_mp3,
+            self.chk_m4b,
+            self.chk_split_chapters,
+            self.chk_video,
+            self.chk_flac,
+            self.chk_dsp,
+            self.chk_sfx,
+            self.chk_lex_emo,
+        ):
+            out_row1.addWidget(chk)
+        out_main_lay.addLayout(out_row1)
+
+        out_row2 = QHBoxLayout()
+        out_row2.setSpacing(6)
+        out_row2.addWidget(QLabel("Ambiente:"))
+        self.combo_gen_soundscape = QComboBox()
+        for k, label_sc in SOUNDSCAPE_PRESETS.items():
+            self.combo_gen_soundscape.addItem(label_sc, k)
+        out_row2.addWidget(self.combo_gen_soundscape)
+
+        self.btn_custom_bgm = QPushButton("[...] BGM")
+        self.btn_custom_bgm.setObjectName("secondaryActionButton")
+        self.btn_custom_bgm.setToolTip("Seleccionar pista musical personalizada (.mp3/.wav) con Auto-Ducking")
+        self.btn_custom_bgm.clicked.connect(self.select_custom_bgm)
+        out_row2.addWidget(self.btn_custom_bgm)
+
+        out_row2.addWidget(QLabel("Video:"))
+        self.combo_video_bg = QComboBox()
+        for k, desc_bg in VIDEO_BACKGROUNDS.items():
+            self.combo_video_bg.addItem(desc_bg, k)
+        idx_bg = self.combo_video_bg.findData("audiogram")
+        if idx_bg >= 0:
+            self.combo_video_bg.setCurrentIndex(idx_bg)
+        out_row2.addWidget(self.combo_video_bg)
+
+        out_row2.addWidget(QLabel("Ratio:"))
+        self.combo_video_aspect = QComboBox()
+        for k, meta_ar in ASPECT_RATIOS.items():
+            self.combo_video_aspect.addItem(meta_ar[2], k)
+        out_row2.addWidget(self.combo_video_aspect)
+
+        out_row2.addWidget(QLabel("Subtítulos:"))
+        self.combo_sub_theme = QComboBox()
+        for k, meta_th in SUBTITLE_THEMES.items():
+            self.combo_sub_theme.addItem(meta_th["name"], k)
+        out_row2.addWidget(self.combo_sub_theme)
+        out_main_lay.addLayout(out_row2)
 
         # =========================================================================
         # SECCIÓN 6: TELEMETRÍA, PROGRESO Y ACCIONES (bottom_control_box)
@@ -661,41 +931,84 @@ class MainWindow(QDialog):
         self.btn_go_library.setObjectName("actionButton")
         self.btn_go_library.clicked.connect(lambda: self.tabs.setCurrentIndex(2))
 
-        self.btn_upload_yt = QPushButton("[ ↗ ] Publicar en YouTube")
+        self.btn_wifi_res = QPushButton("[ ↗ ] Streaming WiFi QR")
+        self.btn_wifi_res.setObjectName("secondaryActionButton")
+        self.btn_wifi_res.clicked.connect(self.open_mobile_streaming_dialog)
+
+        self.btn_upload_yt = QPushButton("[ ↗ ] Kit SEO YouTube")
         self.btn_upload_yt.setObjectName("secondaryActionButton")
         self.btn_upload_yt.clicked.connect(lambda: self.show_distribution_dialog("YouTube"))
 
-        self.btn_upload_sp = QPushButton("[ ↗ ] Publicar en Spotify")
+        self.btn_upload_sp = QPushButton("[ ↗ ] Kit Spotify & RSS")
         self.btn_upload_sp.setObjectName("secondaryActionButton")
         self.btn_upload_sp.clicked.connect(lambda: self.show_distribution_dialog("Spotify"))
 
         res_btns.addWidget(self.btn_open_last_folder)
         res_btns.addWidget(self.btn_go_library)
+        res_btns.addWidget(self.btn_wifi_res)
         res_btns.addWidget(self.btn_upload_yt)
         res_btns.addWidget(self.btn_upload_sp)
         res_lay.addLayout(res_btns)
         bottom_box_lay.addWidget(self.res_card)
 
-        # Botón de Inicio
+        # Barra de Controles de Cola (Iniciar / Pausar / Cancelar)
+        ctrl_row = QHBoxLayout()
+        ctrl_row.setSpacing(8)
         self.start_btn = QPushButton("[ ► ] Iniciar Generación en Lote")
         self.start_btn.setObjectName("primaryButton")
         self.start_btn.clicked.connect(self.start_batch_processing)
-        bottom_box_lay.addWidget(self.start_btn)
+        ctrl_row.addWidget(self.start_btn, stretch=3)
+
+        self.pause_btn = QPushButton("[ ❚❚ ] Pausar Cola")
+        self.pause_btn.setObjectName("secondaryActionButton")
+        self.pause_btn.setEnabled(False)
+        self.pause_btn.clicked.connect(self.toggle_pause_batch)
+        ctrl_row.addWidget(self.pause_btn, stretch=1)
+
+        self.cancel_btn = QPushButton("[ ■ ] Cancelar")
+        self.cancel_btn.setObjectName("secondaryActionButton")
+        self.cancel_btn.setEnabled(False)
+        self.cancel_btn.clicked.connect(self.cancel_batch_processing)
+        ctrl_row.addWidget(self.cancel_btn, stretch=1)
+
+        bottom_box_lay.addLayout(ctrl_row)
 
         # Aplicar distribución inicial
         self.update_generator_tab_layout(self.get_effective_orientation())
 
+    def select_custom_bgm(self):
+        bgm, _ = QFileDialog.getOpenFileName(
+            self,
+            "Seleccionar Pista Musical de Fondo (Auto-Ducking)",
+            "",
+            "Audio (*.mp3 *.wav *.flac *.ogg)"
+        )
+        if bgm:
+            self.custom_bgm_path = bgm
+            self.btn_custom_bgm.setText(f"[✓] {Path(bgm).stem[:12]}")
+            self.btn_custom_bgm.setToolTip(f"BGM Personalizado activo: {bgm}")
+
+    def toggle_pause_batch(self):
+        if not self.worker or not self.worker.isRunning():
+            return
+        if self.worker.is_paused():
+            self.worker.set_paused(False)
+            self.pause_btn.setText("[ ❚❚ ] Pausar Cola")
+            self.lbl_stage.setText("Fase: Reanudando procesamiento...")
+        else:
+            self.worker.set_paused(True)
+            self.pause_btn.setText("[ ► ] Reanudar Cola")
+            self.lbl_stage.setText("Fase: Cola en pausa (esperando reanudación)...")
+
+    def cancel_batch_processing(self):
+        if self.worker and self.worker.isRunning():
+            self.worker.cancel()
+            self.lbl_stage.setText("Fase: Cancelando lote tras el segmento actual...")
+            self.pause_btn.setEnabled(False)
+            self.cancel_btn.setEnabled(False)
+
     def update_generator_tab_layout(self, mode: str):
         """Ajusta la distribución del Generador sin espacios vacíos y con scroll invisible en tablas."""
-        def clear_layout_items(lay):
-            while lay.count():
-                item = lay.takeAt(0)
-                w = item.widget()
-                if w:
-                    w.setParent(None)
-                elif item.layout():
-                    clear_layout_items(item.layout())
-
         for w in (self.batch_group, self.extra_group, self.voice_group, self.ai_group, self.out_group, self.bottom_control_box):
             w.setParent(self.tab_generator)
 
@@ -713,11 +1026,9 @@ class MainWindow(QDialog):
             tbl.horizontalScrollBar().setStyleSheet("QScrollBar:horizontal { height: 0px; background: transparent; }")
 
         if mode == "vertical":
-            # Modo Vertical: Orden secuencial 1 -> 2 -> 3 -> 4 -> 5 -> 6 ocupando todo el ancho y alto
             self.gen_layout.setContentsMargins(10, 6, 10, 6)
             self.gen_layout.setSpacing(6)
 
-            # Tablas fluidas para aprovechar los 1872px de altura
             self.batch_table.setMinimumHeight(130)
             self.batch_table.setMaximumHeight(16777215)
             self.table_cunas.setMinimumHeight(115)
@@ -732,11 +1043,9 @@ class MainWindow(QDialog):
             self.gen_layout.addWidget(self.out_group, stretch=0)
             self.gen_layout.addWidget(self.bottom_control_box, stretch=0)
         else:
-            # Modo Horizontal (16:9): 2 columnas balanceadas ocupando 100% de la ventana sin vacíos
             self.gen_layout.setContentsMargins(10, 8, 10, 8)
             self.gen_layout.setSpacing(8)
 
-            # Tablas fluidas sin topes artificiales para eliminar espacios muertos
             self.batch_table.setMinimumHeight(110)
             self.batch_table.setMaximumHeight(16777215)
             self.table_cunas.setMinimumHeight(100)
@@ -747,7 +1056,6 @@ class MainWindow(QDialog):
             cols_lay = QHBoxLayout()
             cols_lay.setSpacing(12)
 
-            # Columna Izquierda: Archivos (50%) + Portada y Cuñas (50%)
             left_col = QVBoxLayout()
             left_col.setContentsMargins(0, 0, 0, 0)
             left_col.setSpacing(8)
@@ -755,7 +1063,6 @@ class MainWindow(QDialog):
             left_col.addWidget(self.extra_group, stretch=1)
             cols_lay.addLayout(left_col, stretch=50)
 
-            # Columna Derecha: Voces (expandible) + NeMo IA + Formatos de Salida
             right_col = QVBoxLayout()
             right_col.setContentsMargins(0, 0, 0, 0)
             right_col.setSpacing(8)
@@ -787,25 +1094,35 @@ class MainWindow(QDialog):
     def select_files(self):
         files, _ = QFileDialog.getOpenFileNames(
             self,
-            "Seleccionar documentos para audiolibro",
+            "Seleccionar documentos o imágenes OCR para audiolibro",
             "",
-            "Documentos Soportados (*.txt *.pdf *.epub *.md);;Texto (*.txt *.md);;PDF (*.pdf);;EPUB (*.epub)"
+            "Todos los Soportados (*.txt *.pdf *.epub *.md *.png *.jpg *.jpeg *.webp *.bmp);;"
+            "Documentos (*.txt *.pdf *.epub *.md);;"
+            "Imágenes OCR (*.png *.jpg *.jpeg *.webp *.bmp)"
         )
         for f in files:
             self.add_file_to_batch(f)
 
     def add_file_to_batch(self, file_path: str):
-        p = Path(file_path)
-        if any(b["path"] == str(p) for b in self.batch_files):
+        p = Path(file_path) if not file_path.startswith(("http://", "https://")) else None
+        norm_path = str(p) if p else file_path
+        if any(b["path"] == norm_path for b in self.batch_files):
             return
 
         row = self.batch_table.rowCount()
         self.batch_table.insertRow(row)
-        self.batch_table.setItem(row, 0, QTableWidgetItem(p.name))
-        self.batch_table.setItem(row, 1, QTableWidgetItem(self.voice_combo.currentText()))
+        disp_name = p.name if p else norm_path
+        voice_label = self.voice_combo.currentText()
+        self.batch_table.setItem(row, 0, QTableWidgetItem(disp_name))
+        self.batch_table.setItem(row, 1, QTableWidgetItem(voice_label))
         self.batch_table.setItem(row, 2, QTableWidgetItem("Pendiente"))
 
-        self.batch_files.append({"path": str(p), "row": row})
+        self.batch_files.append({
+            "path": norm_path,
+            "row": row,
+            "voice_label": voice_label,
+            "status": "Pendiente",
+        })
 
     def clear_batch(self):
         self.batch_files.clear()
@@ -835,11 +1152,9 @@ class MainWindow(QDialog):
         row = self.table_cunas.rowCount()
         self.table_cunas.insertRow(row)
 
-        # Col 0: Texto
         txt_item = QTableWidgetItem(text)
         self.table_cunas.setItem(row, 0, txt_item)
 
-        # Col 1: Posición Combo
         pos_combo = QComboBox()
         pos_combo.addItem("Entre Capítulos", "between_chapters")
         pos_combo.addItem("Entre Párrafos", "between_paragraphs")
@@ -850,17 +1165,15 @@ class MainWindow(QDialog):
             pos_combo.setCurrentIndex(idx_p)
         self.table_cunas.setCellWidget(row, 1, pos_combo)
 
-        # Col 2: Voz Combo
         v_combo = QComboBox()
         for k, v in self.voices_dict.items():
-            tag = "24k" if v.engine == "kokoro" else f"{v.sample_rate // 1000}k"
+            tag = "24k" if v.engine in ("kokoro", "cloned") else f"{v.sample_rate // 1000}k"
             v_combo.addItem(f"{v.name} [{tag}]", k)
         idx_v = v_combo.findData(voice_key)
         if idx_v >= 0:
             v_combo.setCurrentIndex(idx_v)
         self.table_cunas.setCellWidget(row, 2, v_combo)
 
-        # Col 3: Estilo Combo
         st_combo = QComboBox()
         for st in self.prompt_library.list_styles():
             st_combo.addItem(st.name, st.id)
@@ -869,7 +1182,6 @@ class MainWindow(QDialog):
             st_combo.setCurrentIndex(idx_s)
         self.table_cunas.setCellWidget(row, 3, st_combo)
 
-        # Col 4: Pausa
         pause_item = QTableWidgetItem(f"{pause:.1f}")
         pause_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table_cunas.setItem(row, 4, pause_item)
@@ -912,10 +1224,8 @@ class MainWindow(QDialog):
         for row, (key, profile) in enumerate(self.voices_dict.items()):
             self.voice_pool_table.insertRow(row)
 
-            # Col 0: Checkbox
             chk = QCheckBox()
-            # Por defecto activar todas las voces Kokoro Neural y un par de Piper
-            if profile.engine == "kokoro" or key in ("es_ES-sharvard-medium", "es_MX-claude-high"):
+            if profile.engine in ("kokoro", "cloned") or key in ("es_ES-sharvard-medium", "es_MX-claude-high"):
                 chk.setChecked(True)
             chk_widget = QWidget()
             chk_lay = QHBoxLayout(chk_widget)
@@ -924,13 +1234,16 @@ class MainWindow(QDialog):
             chk_lay.setContentsMargins(0, 0, 0, 0)
             self.voice_pool_table.setCellWidget(row, 0, chk_widget)
 
-            # Col 1: Nombre de la voz
             name_item = QTableWidgetItem(profile.name)
             name_item.setData(Qt.ItemDataRole.UserRole, key)
             self.voice_pool_table.setItem(row, 1, name_item)
 
-            # Col 2: Perfil / Motor
-            engine_str = "Kokoro (24kHz Studio)" if profile.engine == "kokoro" else f"Piper ({profile.sample_rate // 1000}kHz)"
+            if profile.engine == "cloned":
+                engine_str = "Clon Biométrico (24kHz)"
+            elif profile.engine == "kokoro":
+                engine_str = "Kokoro (24kHz Studio)"
+            else:
+                engine_str = f"Piper ({profile.sample_rate // 1000}kHz)"
             gender_str = f" • {profile.gender.capitalize()}" if profile.gender else ""
             desc_item = QTableWidgetItem(f"{engine_str}{gender_str}")
             self.voice_pool_table.setItem(row, 2, desc_item)
@@ -952,7 +1265,7 @@ class MainWindow(QDialog):
             elif mode == "none":
                 chk.setChecked(False)
             elif mode == "kokoro":
-                chk.setChecked(prof is not None and prof.engine == "kokoro")
+                chk.setChecked(prof is not None and prof.engine in ("kokoro", "cloned"))
 
     def get_selected_voice_pool(self) -> list[str]:
         selected = []
@@ -992,14 +1305,13 @@ class MainWindow(QDialog):
 
     def start_batch_processing(self):
         if not self.batch_files:
-            QMessageBox.warning(self, "Lista Vacía", "Por favor agrega al menos un archivo para procesar.")
+            QMessageBox.warning(self, "Lista Vacía", "Por favor agrega al menos un archivo o URL para procesar.")
             return
 
-        if not self.chk_mp3.isChecked() and not self.chk_video.isChecked() and not self.chk_flac.isChecked():
+        if not (self.chk_mp3.isChecked() or self.chk_m4b.isChecked() or self.chk_video.isChecked() or self.chk_flac.isChecked()):
             QMessageBox.warning(self, "Sin formato", "Selecciona al menos un formato de salida.")
             return
 
-        # Cuñas configuradas en la tabla
         interstitials = []
         if self.chk_interstitial.isChecked():
             for r in range(self.table_cunas.rowCount()):
@@ -1014,7 +1326,7 @@ class MainWindow(QDialog):
                 v_combo = self.table_cunas.cellWidget(r, 2)
                 v_key = v_combo.currentData() if v_combo else self.voice_combo.currentData()
 
-                st_combo = self.table_cunas.cellWidget(r, 3)
+                st_combo = self.table_cunas.cellWidget(row, 3) if False else self.table_cunas.cellWidget(r, 3)
                 st = st_combo.currentData() if st_combo else "locutor_radio"
 
                 pause_item = self.table_cunas.item(r, 4)
@@ -1033,7 +1345,6 @@ class MainWindow(QDialog):
                     )
                 )
 
-        # Pool de voces para auto-casting multi-voz
         selected_pool = self.get_selected_voice_pool() if self.chk_autocast.isChecked() else []
         if not selected_pool and self.chk_autocast.isChecked():
             selected_pool = [k for k in self.voices_dict.keys() if k != self.voice_combo.currentData()][:4]
@@ -1042,7 +1353,6 @@ class MainWindow(QDialog):
 
         configs: list[JobConfig] = []
         for item in self.batch_files:
-            # Narración IA
             narration_cfg = NarrationConfig(
                 enabled=self.chk_ai_narration.isChecked(),
                 mode=self.combo_ai_mode.currentData(),
@@ -1058,16 +1368,34 @@ class MainWindow(QDialog):
                 voice_pool=selected_pool,
                 multi_voice_mode="dialogue_auto" if self.chk_autocast.isChecked() else "single",
                 cover_image_path=self.cover_edit.text().strip() or None,
-                generate_audio=self.chk_mp3.isChecked(),
+                generate_cover_ai=self.chk_auto_cover_ai.isChecked(),
+                generate_audio=self.chk_mp3.isChecked() or self.chk_m4b.isChecked(),
+                export_m4b=self.chk_m4b.isChecked(),
+                split_chapters=self.chk_split_chapters.isChecked(),
+                generate_trailer=self.chk_generate_trailer.isChecked(),
                 generate_video=self.chk_video.isChecked(),
                 save_flac_master=self.chk_flac.isChecked(),
+                clean_editorial=self.chk_clean_editorial.isChecked(),
+                apply_lexicon=self.chk_lex_emo.isChecked(),
+                emotional_modulation=self.chk_lex_emo.isChecked(),
+                auto_sfx=self.chk_sfx.isChecked(),
+                dsp_mastering=self.chk_dsp.isChecked(),
+                soundscape_preset=self.combo_gen_soundscape.currentData() or "none",
+                custom_bgm_path=self.custom_bgm_path,
+                video_background=self.combo_video_bg.currentData() or "black",
+                video_aspect_ratio=self.combo_video_aspect.currentData() or "16:9",
+                subtitle_theme=self.combo_sub_theme.currentData() or "cyan_ejecutivo",
+                generate_seo_package=True,
                 narration=narration_cfg,
-                interstitials=interstitials
+                interstitials=interstitials,
             )
             configs.append(cfg)
 
         self.start_btn.setEnabled(False)
         self.start_btn.setText("Procesando lote en segundo plano...")
+        self.pause_btn.setEnabled(True)
+        self.pause_btn.setText("[ ❚❚ ] Pausar Cola")
+        self.cancel_btn.setEnabled(True)
         self.res_card.setVisible(False)
         self.start_timestamp = time.perf_counter()
         self.timer.start()
@@ -1099,6 +1427,8 @@ class MainWindow(QDialog):
                 self.val_eta.setText(str(timedelta(seconds=int(rem_s))))
 
     def on_item_started(self, idx: int, name: str):
+        if 0 <= idx < len(self.batch_files):
+            self.batch_files[idx]["status"] = "Procesando..."
         self.batch_table.setItem(idx, 2, QTableWidgetItem("Procesando..."))
         self.lbl_stage.setText(f"Iniciando: {name}")
 
@@ -1117,7 +1447,11 @@ class MainWindow(QDialog):
         self.lbl_active_utt.setText(f"\"{text}\"")
 
     def on_item_finished(self, idx: int, meta: JobMetadata):
-        self.batch_table.setItem(idx, 2, QTableWidgetItem(f"Completado ({meta.duration_seconds}s)"))
+        status_str = f"Completado ({meta.duration_seconds}s)"
+        if 0 <= idx < len(self.batch_files):
+            self.batch_files[idx]["status"] = status_str
+        self.batch_table.setItem(idx, 2, QTableWidgetItem(status_str))
+        self.update_hw_telemetry()
 
     def on_batch_finished(self, results: list[JobMetadata]):
         self.timer.stop()
@@ -1125,6 +1459,9 @@ class MainWindow(QDialog):
         self.progress_bar.setValue(100)
         self.start_btn.setEnabled(True)
         self.start_btn.setText("[ ⟳ ] Procesar de Nuevo")
+        self.pause_btn.setEnabled(False)
+        self.pause_btn.setText("[ ❚❚ ] Pausar Cola")
+        self.cancel_btn.setEnabled(False)
 
         elapsed = time.perf_counter() - self.start_timestamp if self.start_timestamp else 0
         self.val_elapsed.setText(str(timedelta(seconds=int(elapsed))))
@@ -1133,10 +1470,10 @@ class MainWindow(QDialog):
         self.lbl_active_utt.setText(f"Procesados {len(results)} libro(s) en {elapsed:.1f}s.")
 
         self.res_card.setVisible(True)
-        self.res_summary.setText(f"Se han generado {len(results)} audiolibro(s) en sus carpetas dedicadas.")
+        self.res_summary.setText(f"Se han generado {len(results)} audiolibro(s) con M4B, Capítulos, SEO y RSS en sus carpetas.")
 
-        # Refrescar la pestaña de biblioteca automáticamente
         self.tab_library.refresh_library()
+        self.update_hw_telemetry()
 
     def open_last_book_folder(self):
         if self.last_results:
@@ -1151,6 +1488,8 @@ class MainWindow(QDialog):
         self.timer.stop()
         self.start_btn.setEnabled(True)
         self.start_btn.setText("[ ► ] Iniciar Generación en Lote")
+        self.pause_btn.setEnabled(False)
+        self.cancel_btn.setEnabled(False)
         self.lbl_stage.setText("Error en el lote.")
         self.lbl_active_utt.setText(err_msg)
         QMessageBox.critical(self, "Error en el Lote", f"Ocurrió un error:\n\n{err_msg}")
@@ -1195,6 +1534,20 @@ class GlobalTTSTrayIcon(QSystemTrayIcon):
         prompts_action = QAction("Prompts Maestros & Estilos IA", menu)
         prompts_action.triggered.connect(self.show_prompts_tab)
         menu.addAction(prompts_action)
+
+        menu.addSeparator()
+
+        wifi_action = QAction("Streaming Móvil WiFi & Código QR", menu)
+        wifi_action.triggered.connect(self.show_wifi_dialog)
+        menu.addAction(wifi_action)
+
+        lexicon_action = QAction("Diccionario Fonético (Lexicon)", menu)
+        lexicon_action.triggered.connect(self.show_lexicon_dialog)
+        menu.addAction(lexicon_action)
+
+        cloner_action = QAction("Clonador Biométrico de Voz", menu)
+        cloner_action.triggered.connect(self.show_cloner_dialog)
+        menu.addAction(cloner_action)
 
         menu.addSeparator()
 
@@ -1254,12 +1607,29 @@ class GlobalTTSTrayIcon(QSystemTrayIcon):
         if self.main_window:
             self.main_window.tabs.setCurrentIndex(3)
 
+    def show_wifi_dialog(self):
+        self.show_main_window()
+        if self.main_window:
+            self.main_window.open_mobile_streaming_dialog()
+
+    def show_lexicon_dialog(self):
+        self.show_main_window()
+        if self.main_window:
+            self.main_window.open_lexicon_dialog()
+
+    def show_cloner_dialog(self):
+        self.show_main_window()
+        if self.main_window:
+            self.main_window.open_voice_cloner_dialog()
+
     def open_file_dialog(self):
         files, _ = QFileDialog.getOpenFileNames(
             None,
-            "Seleccionar documentos para audiolibro",
+            "Seleccionar documentos o imágenes OCR para audiolibro",
             "",
-            "Documentos Soportados (*.txt *.pdf *.epub *.md);;Texto Plano (*.txt *.md);;PDF (*.pdf);;EPUB (*.epub)"
+            "Todos los Soportados (*.txt *.pdf *.epub *.md *.png *.jpg *.jpeg *.webp *.bmp);;"
+            "Documentos (*.txt *.pdf *.epub *.md);;"
+            "Imágenes OCR (*.png *.jpg *.jpeg *.webp *.bmp)"
         )
         if files:
             self.show_generator()

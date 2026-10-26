@@ -1,108 +1,115 @@
-"""Lector de PDF con capa de texto (PyMuPDF).
-
-Heurísticas: orden de lectura por bloques, eliminación de encabezados/pies repetidos y
-números de página, reparación de guiones de fin de línea, unión de párrafos partidos entre
-páginas y capítulos a partir de los marcadores (TOC) si existen.
-"""
+"""Lector de archivos PDF (PyMuPDF / fitz) con OCR Local Automático y Limpieza Editorial."""
 from __future__ import annotations
 
-import re
-from collections import Counter
+import logging
 from pathlib import Path
 
-from src.core.models import Chapter, DocumentError, ScannedPdfError
-from src.ingest.common import group_into_chapters, normalize_paragraph, unwrap_lines
+import fitz  # PyMuPDF
 
-BAND = 0.08  # fracción superior/inferior de la página tratada como encabezado/pie
-REPEAT_RATIO = 0.30  # un bloque en banda repetido en >=30% de páginas es encabezado/pie
-MIN_CHARS_PER_PAGE = 25  # por debajo: PDF escaneado
-_PAGE_NUM_RE = re.compile(r"^\s*(?:p[áa]g(?:ina)?\.?\s*)?\d{1,4}(?:\s*(?:/|de|of)\s*\d{1,4})?\s*$", re.IGNORECASE)
-_SENTENCE_END = tuple('.!?…:;"”»)]')
+from src.core.editorial_cleaner import (
+    clean_editorial_blocks,
+    detect_repeating_headers_footers,
+)
+from src.core.language import detect_language
+from src.core.models import Document, DocumentError, ScannedPdfError
+from src.ingest.common import group_into_chapters, normalize_paragraph, sha256_file, unwrap_lines
+from src.ingest.ocr_engine import ocr_pdf_page
 
+logger = logging.getLogger("globaltts.pdf_reader")
 
-def _band_key(text: str) -> str:
-    return re.sub(r"\d+", "#", normalize_paragraph(text)).lower()
-
-
-def _page_blocks(page) -> list[tuple[float, float, str]]:
-    """Bloques de texto (y0, y1, texto) en orden de lectura."""
-    blocks = page.get_text("blocks", sort=True)
-    return [(b[1], b[3], b[4]) for b in blocks if b[6] == 0 and b[4].strip()]
+MIN_CHARS_PER_PAGE = 25  # por debajo de esto se activa OCR local; si sigue vacío se considera PDF en blanco
 
 
-def _collect_paragraphs(pdf) -> list[tuple[int, str]]:
-    pages = [(p.rect.height, _page_blocks(p)) for p in pdf]
-    total_chars = sum(len(t) for _, bl in pages for *_, t in bl)
-    if pdf.page_count == 0 or total_chars / pdf.page_count < MIN_CHARS_PER_PAGE:
-        raise ScannedPdfError("El PDF no tiene capa de texto (parece escaneado); OCR no soportado.")
-
-    in_band: Counter[str] = Counter()
-    for height, blocks in pages:
-        for y0, y1, text in blocks:
-            if y0 < BAND * height or y1 > (1 - BAND) * height:
-                in_band[_band_key(text)] += 1
-    threshold = max(3, REPEAT_RATIO * pdf.page_count)
-    repeated = {k for k, n in in_band.items() if n >= threshold}
-
-    paragraphs: list[tuple[int, str]] = []
-    for page_idx, (height, blocks) in enumerate(pages):
-        for y0, y1, text in blocks:
-            clean = unwrap_lines(text)
-            if not clean:
-                continue
-            at_edge = y0 < BAND * height or y1 > (1 - BAND) * height
-            if at_edge and (_PAGE_NUM_RE.match(clean) or _band_key(text) in repeated):
-                continue
-            paragraphs.append((page_idx, clean))
-    return _merge_split_paragraphs(paragraphs)
-
-
-def _merge_split_paragraphs(paragraphs: list[tuple[int, str]]) -> list[tuple[int, str]]:
-    """Une un párrafo que continúa en la página siguiente (sin cierre de oración)."""
-    merged: list[tuple[int, str]] = []
-    for page, text in paragraphs:
-        if merged and merged[-1][0] != page:
-            prev_page, prev = merged[-1]
-            if not prev.endswith(_SENTENCE_END) and text[:1].islower():
-                merged[-1] = (prev_page, f"{prev} {text}")
-                continue
-        merged.append((page, text))
-    return merged
-
-
-def _chapters_from_toc(paragraphs: list[tuple[int, str]], toc: list[list]) -> tuple[Chapter, ...] | None:
-    top = [(page - 1, title) for level, title, page in toc if level == 1 and page >= 1]
-    top = sorted({(p, t) for p, t in top})
-    if len(top) < 2:
-        return None
-    chapters: list[Chapter] = []
-    starts = [p for p, _ in top]
-    head = [t for p, t in paragraphs if p < starts[0]]
-    if head:
-        chapters.append(Chapter(title="Inicio", paragraphs=tuple(head)))
-    for i, (start, title) in enumerate(top):
-        end = starts[i + 1] if i + 1 < len(top) else float("inf")
-        body = tuple(t for p, t in paragraphs if start <= p < end)
-        if body:
-            chapters.append(Chapter(title=normalize_paragraph(title), paragraphs=body))
-    return tuple(chapters) or None
-
-
-def read_pdf(path: Path) -> dict:
-    import fitz  # PyMuPDF; import diferido para no penalizar otros formatos
-
+def read_pdf(path: Path, enable_ocr: bool = True, clean_editorial: bool = True) -> Document:
     try:
-        with fitz.open(path) as pdf:
-            if pdf.needs_pass:
-                raise DocumentError("El PDF está protegido con contraseña.")
-            paragraphs = _collect_paragraphs(pdf)
-            toc = pdf.get_toc()
-            meta = pdf.metadata or {}
-    except (fitz.FileDataError, RuntimeError) as exc:
-        raise DocumentError(f"PDF inválido o dañado: {exc}") from exc
+        doc = fitz.open(path)
+    except Exception as exc:
+        raise DocumentError(f"No se pudo abrir el PDF {path.name}: {exc}") from exc
 
-    title = (meta.get("title") or "").strip() or path.stem
-    chapters = _chapters_from_toc(paragraphs, toc) or group_into_chapters(
-        (t for _, t in paragraphs), default_title=title
+    with doc:
+        if doc.is_encrypted:
+            raise DocumentError(f"El PDF está cifrado con contraseña: {path.name}")
+        if doc.page_count == 0:
+            raise DocumentError(f"El PDF no tiene páginas: {path.name}")
+
+        meta = doc.metadata or {}
+        title = normalize_paragraph(meta.get("title") or "") or path.stem
+        author = normalize_paragraph(meta.get("author") or "")
+
+        # Extraer índice (TOC) nativo del PDF para enriquecer títulos de capítulos
+        toc_headings: dict[int, list[str]] = {}
+        try:
+            for level, toc_title, page_num in doc.get_toc():
+                if level <= 2 and toc_title and page_num >= 1:
+                    clean_t = normalize_paragraph(toc_title)
+                    if clean_t:
+                        toc_headings.setdefault(page_num - 1, []).append(clean_t)
+        except Exception:
+            pass
+
+        pages_blocks: list[list[str]] = []
+        total_chars = 0
+
+        for page_idx, page in enumerate(doc):
+            page_list: list[str] = []
+            # Inyectar encabezados del TOC si existen para esta página
+            if page_idx in toc_headings:
+                for h_title in toc_headings[page_idx]:
+                    if not h_title.lower().startswith(("capítulo", "chapter", "parte", "prólogo", "epílogo")):
+                        page_list.append(f"Capítulo: {h_title}")
+                    else:
+                        page_list.append(h_title)
+
+            page_chars = 0
+            for block in page.get_text("blocks"):
+                if len(block) >= 7 and block[6] != 0:  # 0 = texto; 1 = imagen
+                    continue
+                cleaned = unwrap_lines(block[4])
+                if cleaned:
+                    page_list.append(cleaned)
+                    page_chars += len(cleaned)
+
+            # Si la página parece escaneada (sin capa de texto), ejecutar OCR local WinRT
+            if page_chars < MIN_CHARS_PER_PAGE and enable_ocr:
+                logger.info("Página %d de '%s' sin capa de texto (%d chars). Ejecutando OCR local...", page_idx + 1, path.name, page_chars)
+                ocr_text = ocr_pdf_page(page)
+                if ocr_text.strip():
+                    for raw_b in ocr_text.split("\n\n"):
+                        cleaned_ocr = unwrap_lines(raw_b)
+                        if cleaned_ocr:
+                            page_list.append(cleaned_ocr)
+                            page_chars += len(cleaned_ocr)
+
+            total_chars += page_chars
+            pages_blocks.append(page_list)
+
+        page_count = doc.page_count
+
+    if total_chars / page_count < MIN_CHARS_PER_PAGE:
+        raise ScannedPdfError(
+            f"{path.name} no contiene texto legible tras inspección y OCR "
+            f"({total_chars} caracteres en {page_count} páginas)."
+        )
+
+    # Limpieza heurística de encabezados/pies repetitivos y numeración de páginas
+    if clean_editorial:
+        repeating = detect_repeating_headers_footers(pages_blocks)
+        flat_blocks: list[str] = []
+        for p_blocks in pages_blocks:
+            flat_blocks.extend(clean_editorial_blocks(p_blocks, repeating_patterns=repeating))
+    else:
+        flat_blocks = [b for p_blocks in pages_blocks for b in p_blocks]
+
+    if not flat_blocks:
+        raise ScannedPdfError(f"{path.name} no contiene bloques de texto tras limpieza.")
+
+    chapters = group_into_chapters(flat_blocks, default_title=title)
+    sample = " ".join(p for c in chapters for p in c.paragraphs)[:4000]
+    return Document(
+        title=title,
+        author=author,
+        language=detect_language(sample),
+        chapters=chapters,
+        source_path=str(path.resolve()),
+        source_sha256=sha256_file(path),
     )
-    return {"title": title, "author": (meta.get("author") or "").strip(), "chapters": chapters}
