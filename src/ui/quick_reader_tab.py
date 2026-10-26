@@ -94,6 +94,7 @@ class TtsPlayWorker(QThread):
         voice_key: str,
         speed: float,
         volume: float,
+        style_id: str = "cuento",
         apply_lexicon: bool = True,
         emotional_modulation: bool = True,
         auto_sfx: bool = False,
@@ -105,6 +106,7 @@ class TtsPlayWorker(QThread):
         self.voice_key = voice_key
         self.speed = speed
         self.volume = volume
+        self.style_id = style_id or "cuento"
         self.apply_lexicon = apply_lexicon
         self.emotional_modulation = emotional_modulation
         self.auto_sfx = auto_sfx
@@ -124,10 +126,17 @@ class TtsPlayWorker(QThread):
 
             eff_speed = self.speed
             eff_gain = 0.0
+            st_obj = PromptLibrary().get_style(self.style_id)
+            if st_obj:
+                eff_speed = eff_speed * float(st_obj.speed_multiplier)
+                eff_gain += float(st_obj.gain_db)
+            if self.style_id and f"[{self.style_id}]" not in proc_text:
+                proc_text = f"[{self.style_id}]{proc_text}[/{self.style_id}]"
+
             if self.emotional_modulation:
                 emo = analyze_sentence_emotion(proc_text)
                 eff_speed = max(0.55, min(1.9, eff_speed * emo.speed_multiplier))
-                eff_gain = emo.gain_db_delta
+                eff_gain += emo.gain_db_delta
 
             engine = PiperTtsEngine(voice_key=self.voice_key)
             style = Style(speed=eff_speed, gain_db=eff_gain)
@@ -208,6 +217,9 @@ class AiEnhanceWorker(QThread):
 class QuickReaderTab(QWidget):
     """Pestaña de Lectura Rápida y Configuración Profesional con Expresividad IA."""
 
+    history_updated = pyqtSignal()
+    voices_changed = pyqtSignal()
+
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.play_worker: Optional[TtsPlayWorker] = None
@@ -221,6 +233,12 @@ class QuickReaderTab(QWidget):
             "voice": "kokoro-ef_dora",
             "speed_factor": 1.0,
             "volume": 100,
+            "style_id": "cuento",
+            "apply_lexicon": True,
+            "emotional_modulation": True,
+            "auto_sfx": False,
+            "dsp_mastering": True,
+            "soundscape": "none",
             "save_directory": str(Path.home() / "Downloads" / "TTS_Audios"),
             "auto_translate_en": True,
             "enable_escape_to_stop": True,
@@ -285,6 +303,49 @@ class QuickReaderTab(QWidget):
         info_row.addWidget(self.lbl_counter)
         r_lay.addLayout(info_row)
 
+        # Barra de Inserción Rápida de Etiquetas Prosódicas y Foley SFX
+        tag_bar = QHBoxLayout()
+        tag_bar.setSpacing(4)
+        lbl_tags = QLabel("Etiquetas:")
+        lbl_tags.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: 600;")
+        tag_bar.addWidget(lbl_tags)
+
+        for label_btn, tag_val, is_wrap in (
+            ("[+Pausa 1s]", "[pausa:1s]", False),
+            ("[Susurro]", "susurro", True),
+            ("[Énfasis]", "énfasis", True),
+            ("[Lento]", "lento", True),
+            ("[Rápido]", "rápido", True),
+            ("[Risa]", "[risa]", False),
+            ("[Suspiro]", "[suspiro]", False),
+        ):
+            b_tag = QPushButton(label_btn)
+            b_tag.setObjectName("secondaryActionButton")
+            b_tag.setStyleSheet("padding: 3px 7px; font-size: 11px;")
+            b_tag.clicked.connect(lambda _, t=tag_val, w=is_wrap: self.insert_prosody_tag(t, w))
+            tag_bar.addWidget(b_tag)
+
+        self.combo_insert_sfx = QComboBox()
+        self.combo_insert_sfx.addItem("[ + SFX Foley... ]", "")
+        for sfx_name in (
+            "trueno",
+            "lluvia",
+            "puerta",
+            "pasos",
+            "campana",
+            "viento",
+            "reloj",
+            "latido",
+            "fuego",
+            "alerta_radio",
+            "transicion",
+        ):
+            self.combo_insert_sfx.addItem(f"SFX: {sfx_name}", f"[sfx:{sfx_name}]")
+        self.combo_insert_sfx.currentIndexChanged.connect(self.on_sfx_combo_selected)
+        tag_bar.addWidget(self.combo_insert_sfx)
+        tag_bar.addStretch()
+        r_lay.addLayout(tag_bar)
+
         btns_row = QHBoxLayout()
         btns_row.setSpacing(6)
 
@@ -341,15 +402,15 @@ class QuickReaderTab(QWidget):
         top_ai_row.addWidget(self.chk_ai_enabled)
 
         self.chk_lexicon = QCheckBox("Diccionario Fonético (Lexicon)")
-        self.chk_lexicon.setChecked(True)
+        self.chk_lexicon.setChecked(bool(self.config.get("apply_lexicon", True)))
         top_ai_row.addWidget(self.chk_lexicon)
 
         self.chk_emotion_mod = QCheckBox("Modulación Emocional Dinámica")
-        self.chk_emotion_mod.setChecked(True)
+        self.chk_emotion_mod.setChecked(bool(self.config.get("emotional_modulation", True)))
         top_ai_row.addWidget(self.chk_emotion_mod)
 
         self.chk_auto_sfx = QCheckBox("Efectos Foley / SFX Automáticos")
-        self.chk_auto_sfx.setChecked(False)
+        self.chk_auto_sfx.setChecked(bool(self.config.get("auto_sfx", False)))
         top_ai_row.addWidget(self.chk_auto_sfx)
 
         btn_lex_dlg = QPushButton("[ ↗ ] Editar Lexicon")
@@ -364,6 +425,11 @@ class QuickReaderTab(QWidget):
         ai_ctrl_lay.setSpacing(5)
 
         row1 = QHBoxLayout()
+        row1.addWidget(QLabel("Estilo Acústico / Narrativo:"))
+        self.combo_ai_style = QComboBox()
+        self.refresh_styles_combo()
+        row1.addWidget(self.combo_ai_style, stretch=1)
+
         row1.addWidget(QLabel("Modo IA:"))
         self.combo_ai_mode = QComboBox()
         self.combo_ai_mode.addItem("Enriquecer prosodia ([pausa], [lento], [énfasis])", "enhance")
@@ -371,12 +437,6 @@ class QuickReaderTab(QWidget):
         self.combo_ai_mode.addItem("Traducción & Adaptación es-LA", "translate")
         self.combo_ai_mode.addItem("Análisis de Diálogos y Emociones", "dialogue_analysis")
         row1.addWidget(self.combo_ai_mode, stretch=1)
-
-        row1.addWidget(QLabel("Estilo:"))
-        self.combo_ai_style = QComboBox()
-        for st in self.prompt_library.list_styles():
-            self.combo_ai_style.addItem(st.name, st.id)
-        row1.addWidget(self.combo_ai_style, stretch=1)
         ai_ctrl_lay.addLayout(row1)
 
         row2 = QHBoxLayout()
@@ -402,7 +462,7 @@ class QuickReaderTab(QWidget):
         row2.addWidget(self.btn_apply_ai)
 
         ai_ctrl_lay.addLayout(row2)
-        self.ai_controls_frame.setEnabled(False)
+        self.toggle_ai_panel(False)
         ai_lay.addWidget(self.ai_controls_frame)
 
         # =========================================================================
@@ -576,8 +636,46 @@ class QuickReaderTab(QWidget):
         dlg.exec()
 
     def open_voice_cloner_dialog(self):
-        dlg = VoiceClonerDialog(self, on_voices_changed=self.populate_voices)
+        def _on_changed():
+            self.populate_voices()
+            self.voices_changed.emit()
+
+        dlg = VoiceClonerDialog(self, on_voices_changed=_on_changed)
         dlg.exec()
+        _on_changed()
+
+    def insert_prosody_tag(self, tag: str, is_wrap: bool = False):
+        cursor = self.text_edit.textCursor()
+        selected = cursor.selectedText()
+        if is_wrap:
+            if selected:
+                cursor.insertText(f"[{tag}]{selected}[/{tag}]")
+            else:
+                cursor.insertText(f"[{tag}]texto[/{tag}]")
+        else:
+            cursor.insertText(f" {tag} ")
+        self.text_edit.setFocus()
+
+    def on_sfx_combo_selected(self, idx: int):
+        if idx <= 0:
+            return
+        sfx_tag = self.combo_insert_sfx.itemData(idx)
+        if sfx_tag:
+            cursor = self.text_edit.textCursor()
+            cursor.insertText(f" {sfx_tag} ")
+        self.combo_insert_sfx.blockSignals(True)
+        self.combo_insert_sfx.setCurrentIndex(0)
+        self.combo_insert_sfx.blockSignals(False)
+        self.text_edit.setFocus()
+
+    def refresh_styles_combo(self):
+        curr = self.combo_ai_style.currentData() if self.combo_ai_style.count() > 0 else self.config.get("style_id", "cuento")
+        self.combo_ai_style.clear()
+        for st in self.prompt_library.list_styles():
+            self.combo_ai_style.addItem(st.name, st.id)
+        idx = self.combo_ai_style.findData(curr)
+        if idx >= 0:
+            self.combo_ai_style.setCurrentIndex(idx)
 
     def set_orientation(self, mode: str):
         """Reorganiza los elementos manteniendo el orden secuencial estricto y sin generar scrollbars."""
@@ -635,7 +733,12 @@ class QuickReaderTab(QWidget):
             self.main_container_layout.addLayout(cols)
 
     def toggle_ai_panel(self, checked: bool):
-        self.ai_controls_frame.setEnabled(checked)
+        self.ai_controls_frame.setEnabled(True)
+        self.combo_ai_style.setEnabled(True)
+        self.combo_ai_mode.setEnabled(checked)
+        self.combo_persona.setEnabled(checked)
+        self.combo_tense.setEnabled(checked)
+        self.btn_apply_ai.setEnabled(checked)
         if checked:
             self.btn_play.setText("[ ► ] Narrar y Escuchar con IA")
         else:
@@ -763,6 +866,7 @@ class QuickReaderTab(QWidget):
             voice_key=voice_key,
             speed=speed,
             volume=volume,
+            style_id=self.combo_ai_style.currentData() or "cuento",
             apply_lexicon=self.chk_lexicon.isChecked(),
             emotional_modulation=self.chk_emotion_mod.isChecked(),
             auto_sfx=self.chk_auto_sfx.isChecked(),
@@ -797,6 +901,7 @@ class QuickReaderTab(QWidget):
         self.btn_play.setText(btn_label)
         self.lbl_status.setText("[ ACTIVO ] Motor Kokoro & Piper TTS Local (DirectML + DSP)")
         self.lbl_status.setStyleSheet("color: #22c55e; font-weight: 700; font-family: Consolas, monospace;")
+        self.history_updated.emit()
 
     def on_play_error(self, err_msg: str):
         self.on_play_finished()
@@ -804,7 +909,8 @@ class QuickReaderTab(QWidget):
 
     def test_voice_sample(self):
         voice_key = self.voice_combo.currentData() or "kokoro-ef_dora"
-        test_phrase = "Hola, esta es una prueba de la voz local configurada con masterización de estudio en GlobalTTS."
+        style_id = self.combo_ai_style.currentData() or "cuento"
+        test_phrase = f"[{style_id}]Hola, esta es una prueba de la voz local configurada con masterización de estudio en GlobalTTS.[/{style_id}]"
         try:
             sd.stop()
             engine = PiperTtsEngine(voice_key=voice_key)
@@ -839,6 +945,7 @@ class QuickReaderTab(QWidget):
 
         voice_key = self.voice_combo.currentData() or "kokoro-ef_dora"
         speed = self.speed_slider.value() / 10.0
+        style_id = self.combo_ai_style.currentData() or "cuento"
 
         try:
             import soundfile as sf
@@ -848,8 +955,21 @@ class QuickReaderTab(QWidget):
             if self.chk_lexicon.isChecked():
                 proc_text = PhoneticLexicon().apply(proc_text)
 
+            eff_speed = speed
+            eff_gain = 0.0
+            st_obj = self.prompt_library.get_style(style_id)
+            if st_obj:
+                eff_speed *= float(st_obj.speed_multiplier)
+                eff_gain += float(st_obj.gain_db)
+            if style_id and f"[{style_id}]" not in proc_text:
+                proc_text = f"[{style_id}]{proc_text}[/{style_id}]"
+            if self.chk_emotion_mod.isChecked():
+                emo = analyze_sentence_emotion(proc_text)
+                eff_speed = max(0.55, min(1.9, eff_speed * emo.speed_multiplier))
+                eff_gain += emo.gain_db_delta
+
             engine = PiperTtsEngine(voice_key=voice_key)
-            samples = engine.synthesize(proc_text, style=Style(speed=speed))
+            samples = engine.synthesize(proc_text, style=Style(speed=eff_speed, gain_db=eff_gain))
             if self.chk_dsp_master.isChecked() and len(samples) > 128:
                 samples = master_audio_track(samples, engine.sample_rate, MasteringConfig(enabled=True))
             bgm_preset = self.combo_soundscape.currentData() or "none"
@@ -860,6 +980,24 @@ class QuickReaderTab(QWidget):
             if vol != 1.0:
                 samples = samples * vol
             sf.write(str(temp_wav), samples, engine.sample_rate)
+
+            if len(samples) > 0:
+                try:
+                    from src.core.history import HistoryManager
+                    hm = HistoryManager()
+                    voice_meta = engine.available_voices.get(voice_key)
+                    v_name = voice_meta.name if voice_meta else voice_key
+                    mono_samples = samples[:, 0] if samples.ndim == 2 else samples
+                    hm.add_entry(
+                        text=text,
+                        voice_key=voice_key,
+                        voice_name=v_name,
+                        samples=mono_samples,
+                        sample_rate=engine.sample_rate,
+                    )
+                    self.history_updated.emit()
+                except Exception:
+                    pass
 
             dur_s = len(samples) / float(engine.sample_rate)
             dur_fmt = time.strftime("%H:%M:%S", time.gmtime(dur_s))
@@ -940,6 +1078,12 @@ class QuickReaderTab(QWidget):
             "voice": self.voice_combo.currentData(),
             "speed_factor": self.speed_slider.value() / 10.0,
             "volume": self.vol_slider.value(),
+            "style_id": self.combo_ai_style.currentData() or "cuento",
+            "apply_lexicon": self.chk_lexicon.isChecked(),
+            "emotional_modulation": self.chk_emotion_mod.isChecked(),
+            "auto_sfx": self.chk_auto_sfx.isChecked(),
+            "dsp_mastering": self.chk_dsp_master.isChecked(),
+            "soundscape": self.combo_soundscape.currentData() or "none",
             "save_directory": self.dir_edit.text().strip(),
             "auto_translate_en": self.chk_translate.isChecked(),
             "enable_escape_to_stop": True,

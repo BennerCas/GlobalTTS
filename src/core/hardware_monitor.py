@@ -46,12 +46,21 @@ class HardwareMonitor:
     """Recolector ligero de telemetría del sistema y aceleradores IA."""
 
     def __init__(self) -> None:
+        self.enforce_environment()
         self._dml_available = self._check_dml_provider()
         # Primera llamada a cpu_percent sin bloqueo para inicializar el contador
         try:
             psutil.cpu_percent(interval=None)
         except Exception:
             pass
+
+    @staticmethod
+    def enforce_environment() -> None:
+        """Aplica las directrices de hardware DirectML, Olive y ROCm definidas en GEMINI.md."""
+        os.environ["OLIVE_GPU_MEMORY_LIMIT"] = "25GB"
+        os.environ["OLIVE_CPU_THREADS"] = "12"
+        os.environ["OLLAMA_IGPU_ENABLE"] = "1"
+        os.environ["HSA_OVERRIDE_GFX_VERSION"] = "11.0.0"
 
     @staticmethod
     def _check_dml_provider() -> bool:

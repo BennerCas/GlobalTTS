@@ -26,6 +26,7 @@ import soundfile as sf
 from src.ai.cover_generator import generate_audiobook_cover
 from src.ai.nemo_enhancer import MistralNeMoEnhancer, NarrationConfig
 from src.ai.piper_engine import PiperTtsEngine
+from src.ai.prompt_library import PromptLibrary
 from src.audio.assembler import AudioAssembler, compute_chapter_timings
 from src.audio.karaoke import (
     export_all_subtitle_formats,
@@ -160,7 +161,7 @@ class AudiobookPipeline:
 
         job_id = f"{timestamp_str}_audio_{slug}"
         doc_display_title = doc.title or slug.replace("_", " ").title()
-        active_style = (self.config.narration.style if (self.config.narration and self.config.narration.enabled) else "cuento")
+        active_style = (self.config.narration.style if (self.config.narration and self.config.narration.style) else "cuento")
 
         # 3. Portada si existe o generación automática con IA Local (1024x1024)
         copied_cover_path: Optional[Path] = None
@@ -317,6 +318,7 @@ class AudiobookPipeline:
                     final_utts.append(Utterance(txt, Style(voice=v_key), item.pause_after, -1, -1))
 
             current_chapter = -1
+            current_paragraph = -1
             for utt in raw_utterances:
                 if utt.chapter_index != current_chapter and utt.is_title and current_chapter != -1:
                     for item in self.config.interstitials:
@@ -324,7 +326,19 @@ class AudiobookPipeline:
                             v_key = item.voice_key or self.config.voice_key
                             txt = f"[{item.style}]{item.text}[/{item.style}]" if item.style else item.text
                             final_utts.append(Utterance(txt, Style(voice=v_key), item.pause_after, -1, -1))
+                elif (
+                    utt.chapter_index == current_chapter
+                    and utt.paragraph_index != current_paragraph
+                    and current_paragraph != -1
+                    and not utt.is_title
+                ):
+                    for item in self.config.interstitials:
+                        if item.position == "between_paragraphs":
+                            v_key = item.voice_key or self.config.voice_key
+                            txt = f"[{item.style}]{item.text}[/{item.style}]" if item.style else item.text
+                            final_utts.append(Utterance(txt, Style(voice=v_key), item.pause_after, -1, -1))
                 current_chapter = utt.chapter_index
+                current_paragraph = utt.paragraph_index
                 final_utts.append(utt)
 
             for item in self.config.interstitials:
@@ -337,18 +351,24 @@ class AudiobookPipeline:
         else:
             utterances = tuple(raw_utterances)
 
-        # Aplicar speed_factor global si es distinto de 1.0
-        if abs(self.config.speed_factor - 1.0) > 0.01:
+        # Aplicar perfil acústico del estilo seleccionado y speed_factor global
+        st_obj = PromptLibrary().get_style(active_style) if active_style else None
+        style_speed_mult = float(st_obj.speed_multiplier) if st_obj else 1.0
+        style_gain_delta = float(st_obj.gain_db) if st_obj else 0.0
+        style_pause_mult = float(st_obj.pause_multiplier) if st_obj else 1.0
+
+        total_speed_mult = self.config.speed_factor * style_speed_mult
+        if abs(total_speed_mult - 1.0) > 0.01 or abs(style_gain_delta) > 0.01 or abs(style_pause_mult - 1.0) > 0.01:
             utterances = tuple(
                 Utterance(
                     u.text,
                     Style(
-                        speed=u.style.speed * self.config.speed_factor,
-                        gain_db=u.style.gain_db,
+                        speed=max(0.55, min(1.9, u.style.speed * total_speed_mult)),
+                        gain_db=u.style.gain_db + style_gain_delta,
                         voice=u.style.voice,
                         instruct=u.style.instruct,
                     ),
-                    u.pause_after,
+                    round(u.pause_after * style_pause_mult, 2),
                     u.chapter_index,
                     u.paragraph_index,
                     u.is_title,

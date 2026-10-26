@@ -21,6 +21,7 @@ from PyQt6.QtCore import QUrl, Qt, pyqtSignal
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtWidgets import (
+    QComboBox,
     QFileDialog,
     QFrame,
     QGroupBox,
@@ -52,7 +53,7 @@ BIBLIOTECA_DIR = PROJECT_ROOT / "biblioteca"
 class LibraryTab(QWidget):
     """Pestaña de exploración de la biblioteca, audiolibros e historial infinito."""
 
-    load_text_requested = pyqtSignal(str)
+    load_text_requested = pyqtSignal(str, str)
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -257,7 +258,36 @@ class LibraryTab(QWidget):
         player_box = QFrame()
         player_box.setObjectName("metricCard")
         p_lay = QVBoxLayout(player_box)
-        p_lay.setSpacing(8)
+        p_lay.setSpacing(6)
+
+        track_row = QHBoxLayout()
+        track_row.setSpacing(8)
+        lbl_trk = QLabel("Pista / Capítulo:")
+        lbl_trk.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: 600;")
+        track_row.addWidget(lbl_trk)
+
+        self.combo_track = QComboBox()
+        self.combo_track.currentIndexChanged.connect(self.on_track_combo_changed)
+        track_row.addWidget(self.combo_track, stretch=1)
+
+        lbl_spd = QLabel("Velocidad:")
+        lbl_spd.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: 600;")
+        track_row.addWidget(lbl_spd)
+
+        self.combo_speed = QComboBox()
+        for rate_val, rate_lbl in (
+            (0.75, "0.75x"),
+            (1.0, "1.0x (Normal)"),
+            (1.25, "1.25x"),
+            (1.5, "1.5x"),
+            (1.75, "1.75x"),
+            (2.0, "2.0x"),
+        ):
+            self.combo_speed.addItem(rate_lbl, rate_val)
+        self.combo_speed.setCurrentIndex(1)
+        self.combo_speed.currentIndexChanged.connect(self.on_playback_rate_changed)
+        track_row.addWidget(self.combo_speed)
+        p_lay.addLayout(track_row)
 
         slider_row = QHBoxLayout()
         slider_row.setSpacing(8)
@@ -331,10 +361,14 @@ class LibraryTab(QWidget):
         self.btn_open_subs.setToolTip("Inspecciona los subtítulos (.SRT/.VTT/.LRC) y el paquete SEO/RSS")
         self.btn_open_subs.clicked.connect(self.inspect_subtitles_and_seo)
 
-        self.btn_load_to_reader = QPushButton("[ ↗ ] Cargar en Lector Rápido")
+        self.btn_export_zip = QPushButton("[ ⤓ ] Exportar ZIP")
+        self.btn_export_zip.setObjectName("secondaryActionButton")
+        self.btn_export_zip.setToolTip("Empaqueta todos los archivos del audiolibro en un paquete .ZIP portable")
+        self.btn_export_zip.clicked.connect(self.export_selected_book_zip)
+
+        self.btn_load_to_reader = QPushButton("[ ↗ ] Cargar Texto")
         self.btn_load_to_reader.setObjectName("actionButton")
         self.btn_load_to_reader.clicked.connect(self.load_selected_to_reader)
-        self.btn_load_to_reader.setVisible(False)
 
         self.btn_delete_history = QPushButton("[ × ] Eliminar")
         self.btn_delete_history.setObjectName("secondaryActionButton")
@@ -346,6 +380,7 @@ class LibraryTab(QWidget):
         actions_grid.addWidget(self.btn_change_cover)
         actions_grid.addWidget(self.btn_gen_cover_ai)
         actions_grid.addWidget(self.btn_open_subs)
+        actions_grid.addWidget(self.btn_export_zip)
         actions_grid.addWidget(self.btn_load_to_reader)
         actions_grid.addWidget(self.btn_delete_history)
         detail_layout.addLayout(actions_grid)
@@ -500,11 +535,12 @@ class LibraryTab(QWidget):
         self.btn_change_cover.setVisible(True)
         self.btn_gen_cover_ai.setVisible(True)
         self.btn_open_subs.setVisible(True)
+        self.btn_export_zip.setVisible(True)
         self.btn_play_trailer.setVisible(True)
         self.text_preview.setVisible(False)
         self.btn_open_video.setVisible(True)
         self.dist_group.setVisible(True)
-        self.btn_load_to_reader.setVisible(False)
+        self.btn_load_to_reader.setVisible(True)
         self.btn_delete_history.setVisible(False)
 
         self.lbl_book_title.setText(book_data["title"])
@@ -534,14 +570,26 @@ class LibraryTab(QWidget):
             self.cover_label.setPixmap(QPixmap())
             self.cover_label.setText("[ Sin Portada ]\n\n1:1 Master Art")
 
-        if book_data["mp3"] and book_data["mp3"].exists():
-            self.player.setSource(QUrl.fromLocalFile(str(book_data["mp3"])))
-            self.btn_play.setEnabled(True)
-        elif book_data.get("m4b") and book_data["m4b"].exists():
-            self.player.setSource(QUrl.fromLocalFile(str(book_data["m4b"])))
-            self.btn_play.setEnabled(True)
-        elif book_data["master"] and book_data["master"].exists():
-            self.player.setSource(QUrl.fromLocalFile(str(book_data["master"])))
+        # Poblar el selector de Pista / Capítulo (Obra completa, Trailer 90s y Capítulos individuales)
+        self.combo_track.blockSignals(True)
+        self.combo_track.clear()
+        main_audio = book_data.get("mp3") or book_data.get("m4b") or book_data.get("master")
+        if main_audio and main_audio.exists():
+            self.combo_track.addItem(f"[ Obra Completa ] {main_audio.name}", str(main_audio))
+        if book_data.get("m4b") and book_data["m4b"].exists() and book_data.get("mp3") != book_data.get("m4b"):
+            self.combo_track.addItem(f"[ M4B Capítulos ] {book_data['m4b'].name}", str(book_data["m4b"]))
+        if book_data.get("trailer") and book_data["trailer"].exists():
+            self.combo_track.addItem("[ Trailer Promocional 90s ] trailer_sinopsis.mp3", str(book_data["trailer"]))
+
+        cap_dir = book_data["folder"] / "capitulos"
+        if cap_dir.exists():
+            for ch_mp3 in sorted(cap_dir.glob("*.mp3")):
+                self.combo_track.addItem(f"Capítulo: {ch_mp3.stem.replace('_', ' ')}", str(ch_mp3))
+        self.combo_track.blockSignals(False)
+
+        if self.combo_track.count() > 0:
+            first_path = self.combo_track.itemData(0)
+            self.player.setSource(QUrl.fromLocalFile(first_path))
             self.btn_play.setEnabled(True)
         else:
             self.btn_play.setEnabled(False)
@@ -568,6 +616,7 @@ class LibraryTab(QWidget):
         self.btn_change_cover.setVisible(False)
         self.btn_gen_cover_ai.setVisible(False)
         self.btn_open_subs.setVisible(False)
+        self.btn_export_zip.setVisible(False)
         self.btn_play_trailer.setVisible(False)
         self.text_preview.setVisible(True)
         self.text_preview.setPlainText(h_data.get("text", ""))
@@ -586,11 +635,15 @@ class LibraryTab(QWidget):
         self.lbl_book_meta.setText(meta_text)
 
         audio_file = Path(h_data.get("file_path", ""))
+        self.combo_track.blockSignals(True)
+        self.combo_track.clear()
         if audio_file.exists():
+            self.combo_track.addItem(f"[ Historial ] {audio_file.name}", str(audio_file))
             self.player.setSource(QUrl.fromLocalFile(str(audio_file)))
             self.btn_play.setEnabled(True)
         else:
             self.btn_play.setEnabled(False)
+        self.combo_track.blockSignals(False)
 
     def generate_cover_ai_for_selected(self):
         """Genera una portada 1024x1024 con IA local para el audiolibro seleccionado."""
@@ -767,10 +820,80 @@ class LibraryTab(QWidget):
             if p.exists():
                 os.startfile(p.parent)
 
+    def on_track_combo_changed(self, idx: int):
+        if idx < 0:
+            return
+        track_path = self.combo_track.itemData(idx)
+        if track_path and Path(track_path).exists():
+            was_playing = self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+            self.player.setSource(QUrl.fromLocalFile(str(track_path)))
+            if was_playing:
+                self.player.play()
+
+    def on_playback_rate_changed(self, idx: int):
+        if idx < 0:
+            return
+        rate = float(self.combo_speed.itemData(idx) or 1.0)
+        self.player.setPlaybackRate(rate)
+
+    def export_selected_book_zip(self):
+        if not self.selected_book_data:
+            QMessageBox.information(self, "Exportar ZIP", "Selecciona primero un audiolibro del catálogo.")
+            return
+        folder: Path = self.selected_book_data["folder"]
+        default_zip = Path.home() / "Desktop" / f"{folder.name}_Audiolibro_Completo.zip"
+        dest_file, _ = QFileDialog.getSaveFileName(
+            self,
+            "Exportar Paquete Completo de Audiolibro (.ZIP)",
+            str(default_zip),
+            "Archivo ZIP (*.zip)",
+        )
+        if not dest_file:
+            return
+        try:
+            import shutil
+            base_no_ext = str(Path(dest_file).with_suffix(""))
+            archive_path = shutil.make_archive(base_no_ext, "zip", root_dir=str(folder))
+            QMessageBox.information(
+                self,
+                "Paquete ZIP Exportado",
+                f"Se ha empaquetado exitosamente toda la carpeta del audiolibro en:\n\n{archive_path}",
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Error al Exportar ZIP", f"No se pudo crear el paquete ZIP:\n{exc}")
+
     def load_selected_to_reader(self):
         if self.selected_history_data:
             txt = self.selected_history_data.get("text", "")
-            self.load_text_requested.emit(txt)
+            title = self.selected_history_data.get("snippet", "Lectura Rápida")[:40]
+            self.load_text_requested.emit(txt, title)
+        elif self.selected_book_data:
+            meta = self.selected_book_data.get("meta", {})
+            src_file = meta.get("source_file", "")
+            title = self.selected_book_data.get("title", "Audiolibro")
+            if src_file and Path(src_file).exists():
+                try:
+                    from src.ingest.loader import load_document
+                    doc = load_document(src_file)
+                    paragraphs = []
+                    for ch in doc.chapters:
+                        if ch.title:
+                            paragraphs.append(ch.title)
+                        paragraphs.extend(ch.paragraphs)
+                    self.load_text_requested.emit("\n\n".join(paragraphs), title)
+                    return
+                except Exception:
+                    pass
+            # Fallback: leer desde el archivo .srt si el archivo fuente original ya no está
+            srt_p = self.selected_book_data.get("srt")
+            if srt_p and Path(srt_p).exists():
+                raw_srt = Path(srt_p).read_text(encoding="utf-8", errors="ignore")
+                lines = [
+                    ln.strip()
+                    for ln in raw_srt.splitlines()
+                    if ln.strip() and not ln.strip().isdigit() and "-->" not in ln
+                ]
+                self.load_text_requested.emit(" ".join(lines), title)
 
     def delete_current_history_entry(self):
         if not self.selected_history_data:

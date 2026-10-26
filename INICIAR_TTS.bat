@@ -1,7 +1,13 @@
 @echo off
 title Iniciar Global TTS
 cd /d "%~dp0"
-taskkill /F /FI "WINDOWTITLE eq Global TTS*" 2>nul
+set OLIVE_GPU_MEMORY_LIMIT=25GB
+set OLIVE_CPU_THREADS=12
+set OLLAMA_IGPU_ENABLE=1
+set HSA_OVERRIDE_GFX_VERSION=11.0.0
+
+taskkill /F /IM AutoHotkey64.exe 2>nul
+taskkill /F /FI "WINDOWTITLE eq GlobalTTS*" 2>nul
 
 :: 1. Iniciar atajos globales con AutoHotkey v2
 start "" "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe" "%~dp0global_tts.ahk"

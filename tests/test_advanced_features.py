@@ -349,6 +349,30 @@ def test_ui_mainwindow_and_studio_dialogs_init():
     win.apply_orientation("vertical", force=True)
     win.apply_orientation("horizontal", force=True)
 
+    # Probar cableado entre Biblioteca -> Lector Rápido
+    win.tab_library.load_text_requested.emit("Texto enviado desde la biblioteca.", "Prueba Biblioteca")
+    assert win.tab_quick.text_edit.toPlainText() == "Texto enviado desde la biblioteca."
+    assert win.tabs.currentIndex() == 0
+
+    # Probar barra de inserción de etiquetas prosódicas y SFX en Lector Rápido
+    win.tab_quick.insert_prosody_tag("[pausa:1s]", is_wrap=False)
+    assert "[pausa:1s]" in win.tab_quick.text_edit.toPlainText()
+    win.tab_quick.on_sfx_combo_selected(1)
+    assert "[sfx:" in win.tab_quick.text_edit.toPlainText()
+    assert win.tab_quick.combo_ai_style.isEnabled()
+    assert win.combo_style.isEnabled()
+
+    # Probar controles del reproductor de Biblioteca (Pista / Capítulo y Velocidad)
+    assert hasattr(win.tab_library, "combo_track")
+    assert hasattr(win.tab_library, "combo_speed")
+    assert hasattr(win.tab_library, "btn_export_zip")
+    win.tab_library.combo_speed.setCurrentIndex(2)  # 1.25x
+
+    # Probar sincronización de estilos desde Prompts Maestros hacia Generador y Lector Rápido
+    win.tab_prompts.prompts_updated.emit()
+    assert win.tab_quick.combo_ai_style.count() >= 9
+    assert win.combo_style.count() >= 9
+
     dlg_lex = LexiconManagerDialog()
     assert dlg_lex.table.rowCount() >= 20
     dlg_lex.close()
@@ -361,3 +385,23 @@ def test_ui_mainwindow_and_studio_dialogs_init():
 
     win.hw_timer.stop()
     win.close()
+
+
+def test_global_hotkey_tts_engine_pipeline():
+    import tts_engine
+
+    cfg = tts_engine.load_config()
+    cfg["voice"] = "kokoro-ef_dora"
+    cfg["style_id"] = "locutor_radio"
+    cfg["apply_lexicon"] = True
+    cfg["emotional_modulation"] = True
+    cfg["dsp_mastering"] = True
+
+    samples, sr = tts_engine.synthesize_audio(
+        "Prueba de lectura global con IA y GPU.",
+        voice_key=cfg["voice"],
+        speed_factor=1.0,
+        cfg=cfg,
+    )
+    assert sr in (16000, 22050, 24000)
+    assert len(samples) > 1000

@@ -66,9 +66,25 @@ class PromptItem:
         )
 
 
+STYLE_ACOUSTIC_DEFAULTS: Dict[str, Tuple[float, float, float]] = {
+    "cuento": (0.94, 1.0, 1.35),
+    "cuentacuentos": (0.94, 1.0, 1.35),
+    "locutor_radio": (1.06, 2.5, 0.85),
+    "terror": (0.86, -1.5, 1.60),
+    "epico": (0.92, 2.0, 1.40),
+    "ciencia_ficcion": (0.98, 1.0, 1.10),
+    "ensayo": (0.93, 0.5, 1.35),
+    "historia": (0.95, 0.8, 1.25),
+    "poesia": (0.85, -0.5, 1.65),
+    "drama": (0.94, 1.5, 1.30),
+    "misterioso": (0.88, -1.0, 1.50),
+    "institucional": (1.02, 1.8, 0.95),
+}
+
+
 @dataclass
 class NarrativeStyleDef:
-    """Definición exhaustiva de un estilo narrativo bajo CO-STAR."""
+    """Definición exhaustiva de un estilo narrativo bajo CO-STAR y perfil acústico real."""
     id: str
     name: str
     tone: str
@@ -77,14 +93,27 @@ class NarrativeStyleDef:
     prosody_guidance: str
     costar_framework: Dict[str, str] = field(default_factory=dict)
     system_prompt_addon: str = ""
+    speed_multiplier: float = 1.0
+    gain_db: float = 0.0
+    pause_multiplier: float = 1.0
+
+    def __post_init__(self) -> None:
+        if self.speed_multiplier == 1.0 and self.gain_db == 0.0 and self.pause_multiplier == 1.0:
+            if self.id in STYLE_ACOUSTIC_DEFAULTS:
+                spd, gain, pse = STYLE_ACOUSTIC_DEFAULTS[self.id]
+                self.speed_multiplier = spd
+                self.gain_db = gain
+                self.pause_multiplier = pse
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "NarrativeStyleDef":
+        sid = data.get("id", "")
+        def_spd, def_gain, def_pse = STYLE_ACOUSTIC_DEFAULTS.get(sid, (1.0, 0.0, 1.0))
         return cls(
-            id=data.get("id", ""),
+            id=sid,
             name=data.get("name", ""),
             tone=data.get("tone", ""),
             cadence=data.get("cadence", ""),
@@ -92,6 +121,9 @@ class NarrativeStyleDef:
             prosody_guidance=data.get("prosody_guidance", ""),
             costar_framework=data.get("costar_framework", {}),
             system_prompt_addon=data.get("system_prompt_addon", ""),
+            speed_multiplier=float(data.get("speed_multiplier", def_spd)),
+            gain_db=float(data.get("gain_db", def_gain)),
+            pause_multiplier=float(data.get("pause_multiplier", def_pse)),
         )
 
     def get_full_guidance(self) -> str:

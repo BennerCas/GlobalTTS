@@ -199,6 +199,7 @@ class MainWindow(QDialog):
 
         # Telemetría de proceso y hardware
         self.hw_monitor = HardwareMonitor()
+        self.hw_monitor.enforce_environment()
         self.start_timestamp: Optional[float] = None
         self.timer = QTimer(self)
         self.timer.setInterval(100)
@@ -288,6 +289,11 @@ class MainWindow(QDialog):
         self.tab_manual = ManualTab()
         self.tabs.addTab(self.tab_manual, "MANUAL DE USO COMPLETO")
 
+        # Cableado cruzado de señales en tiempo real entre pestañas
+        self.tab_quick.history_updated.connect(self.tab_library.refresh_library)
+        self.tab_quick.voices_changed.connect(self.refresh_all_voices)
+        self.tab_prompts.prompts_updated.connect(self.tab_quick.refresh_styles_combo)
+
         # Botones de Estudio ubicados en la fila de pestañas (al costado de MANUAL DE USO COMPLETO)
         self.tab_corner_bar = QWidget()
         corner_lay = QHBoxLayout(self.tab_corner_bar)
@@ -372,9 +378,11 @@ class MainWindow(QDialog):
             f"Se eliminaron {removed} segmentos de audio en caché correctamente."
         )
 
-    def on_library_load_text_requested(self, text: str, title: str):
+    def on_library_load_text_requested(self, text: str, title: str = ""):
         if hasattr(self, "tab_quick"):
             self.tab_quick.text_edit.setPlainText(text)
+            if title and hasattr(self.tab_quick, "lbl_status"):
+                self.tab_quick.lbl_status.setText(f"[ CARGADO DESDE BIBLIOTECA ] {title[:45]}")
             self.tabs.setCurrentIndex(0)
 
     def minimize_to_tray(self):
@@ -789,7 +797,7 @@ class MainWindow(QDialog):
         btn_row_p.addWidget(self.btn_manage_prompts)
         ai_opt_lay.addRow("Catálogo:", btn_row_p)
 
-        self.ai_options_frame.setEnabled(False)
+        self.toggle_ai_options(False)
         ai_lay.addWidget(self.ai_options_frame)
 
         # =========================================================================
@@ -1092,16 +1100,35 @@ class MainWindow(QDialog):
             self.gen_layout.addWidget(self.bottom_control_box, stretch=0)
 
     def toggle_ai_options(self, checked: bool):
-        self.ai_options_frame.setEnabled(checked)
+        self.ai_options_frame.setEnabled(True)
+        self.combo_style.setEnabled(True)
+        self.btn_manage_prompts.setEnabled(True)
+        self.combo_ai_mode.setEnabled(checked)
+        self.combo_persona.setEnabled(checked)
+        self.combo_tense.setEnabled(checked)
 
     def refresh_styles_combo(self):
         curr = self.combo_style.currentData() if self.combo_style.count() > 0 else "cuento"
         self.combo_style.clear()
-        for style in self.prompt_library.list_styles():
+        styles = self.prompt_library.list_styles()
+        for style in styles:
             self.combo_style.addItem(style.name, style.id)
         idx = self.combo_style.findData(curr)
         if idx >= 0:
             self.combo_style.setCurrentIndex(idx)
+
+        # Actualizar también los selectores de estilo de la tabla de cuñas
+        if hasattr(self, "table_cunas"):
+            for r in range(self.table_cunas.rowCount()):
+                st_combo = self.table_cunas.cellWidget(r, 3)
+                if isinstance(st_combo, QComboBox):
+                    c_st = st_combo.currentData() or "locutor_radio"
+                    st_combo.clear()
+                    for style in styles:
+                        st_combo.addItem(style.name, style.id)
+                    idx_s = st_combo.findData(c_st)
+                    if idx_s >= 0:
+                        st_combo.setCurrentIndex(idx_s)
 
     def open_prompt_manager(self):
         dlg = PromptManagerDialog(library=self.prompt_library, parent=self)

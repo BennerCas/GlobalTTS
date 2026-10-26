@@ -104,6 +104,13 @@ $Space:: {
     TriggerAction("save", false)
 }
 
+; Opción C: Atajo ejecutivo de guardado rápido (Ctrl + Shift + S)
+^+s:: {
+    global LastDragEndTime
+    LastDragEndTime := 0
+    TriggerAction("save", false)
+}
+
 ; ============================================================
 ; --- 3. DETENER LECTURA ---
 ; ============================================================

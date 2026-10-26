@@ -34,7 +34,15 @@ import win32clipboard
 import win32con
 
 from src.ai.piper_engine import PiperTtsEngine, list_available_piper_voices
+from src.ai.prompt_library import PromptLibrary
+from src.audio.dsp_mastering import MasteringConfig, master_audio_track
+from src.audio.sfx_engine import inject_semantic_sfx_tags
+from src.audio.soundscape import mix_voice_with_soundscape
+from src.core.emotion_analyzer import analyze_sentence_emotion
+from src.core.hardware_monitor import HardwareMonitor
+from src.core.history import HistoryManager
 from src.core.language import detect_language
+from src.core.lexicon import PhoneticLexicon
 from src.core.text_clean import clean_text_for_tts, make_filename_slug
 from src.markup.style import Style
 
@@ -43,9 +51,15 @@ LOG_FILE = PROJECT_ROOT / "global_tts.log"
 LAST_SPEECH_FILE = PROJECT_ROOT / "last_speech.txt"
 
 DEFAULT_CONFIG = {
-    "voice": "es_MX-claude-high",
+    "voice": "kokoro-ef_dora",
     "speed_factor": 1.0,
     "volume": 100,
+    "style_id": "cuento",
+    "apply_lexicon": True,
+    "emotional_modulation": True,
+    "auto_sfx": False,
+    "dsp_mastering": True,
+    "soundscape": "none",
     "save_directory": str(Path.home() / "Downloads" / "TTS_Audios"),
     "auto_translate_en": True,
     "enable_escape_to_stop": True,
@@ -186,22 +200,71 @@ def maybe_translate_to_spanish(text: str) -> str:
     return text
 
 
-def synthesize_audio(text: str, voice_key: str, speed_factor: float = 1.0) -> tuple[np.ndarray, int]:
-    """Sintetiza texto usando Piper TTS local."""
+def synthesize_audio(text: str, voice_key: str, speed_factor: float = 1.0, cfg: Optional[dict] = None) -> tuple[np.ndarray, int]:
+    """Sintetiza texto usando Kokoro 24kHz / Voces Clonadas / Piper TTS local con cadena DSP completa."""
+    HardwareMonitor().enforce_environment()
+    cfg = cfg or {}
+    proc_text = text
+
+    if cfg.get("auto_sfx", False):
+        proc_text = inject_semantic_sfx_tags(proc_text)
+    if cfg.get("apply_lexicon", True):
+        proc_text = PhoneticLexicon().apply(proc_text)
+
+    eff_speed = float(speed_factor)
+    eff_gain = 0.0
+    style_id = cfg.get("style_id", "cuento")
+    if style_id:
+        st_obj = PromptLibrary().get_style(style_id)
+        if st_obj:
+            eff_speed *= float(st_obj.speed_multiplier)
+            eff_gain += float(st_obj.gain_db)
+        if f"[{style_id}]" not in proc_text:
+            proc_text = f"[{style_id}]{proc_text}[/{style_id}]"
+
+    if cfg.get("emotional_modulation", True):
+        emo = analyze_sentence_emotion(proc_text)
+        eff_speed = max(0.55, min(1.9, eff_speed * emo.speed_multiplier))
+        eff_gain += emo.gain_db_delta
+
     engine = PiperTtsEngine(voice_key=voice_key)
-    style = Style(speed=speed_factor)
-    samples = engine.synthesize(text, style=style)
+    style = Style(speed=eff_speed, gain_db=eff_gain)
+    samples = engine.synthesize(proc_text, style=style)
+
+    if cfg.get("dsp_mastering", True) and len(samples) > 128:
+        samples = master_audio_track(samples, engine.sample_rate, MasteringConfig(enabled=True))
+
+    soundscape_preset = cfg.get("soundscape", "none")
+    if soundscape_preset and soundscape_preset != "none" and len(samples) > 0:
+        samples = mix_voice_with_soundscape(samples, engine.sample_rate, preset=soundscape_preset)
+
+    if len(samples) > 0:
+        try:
+            hm = HistoryManager()
+            v_meta = engine.available_voices.get(voice_key)
+            v_name = v_meta.name if v_meta else voice_key
+            mono_samples = samples[:, 0] if samples.ndim == 2 else samples
+            hm.add_entry(
+                text=text,
+                voice_key=voice_key,
+                voice_name=v_name,
+                samples=mono_samples,
+                sample_rate=engine.sample_rate,
+            )
+        except Exception:
+            pass
+
     return samples, engine.sample_rate
 
 
 def do_play(text: str, cfg: dict):
     try:
-        voice = cfg.get("voice", "es_MX-claude-high")
+        voice = cfg.get("voice", "kokoro-ef_dora")
         speed = float(cfg.get("speed_factor", 1.0))
         vol_pct = parse_volume(cfg.get("volume", 100))
 
-        log(f"[PLAY] Sintetizando con Piper ({voice}, speed={speed}x, {len(text)} chars)...")
-        samples, sr = synthesize_audio(text, voice_key=voice, speed_factor=speed)
+        log(f"[PLAY] Sintetizando con motor neural ({voice}, speed={speed}x, {len(text)} chars)...")
+        samples, sr = synthesize_audio(text, voice_key=voice, speed_factor=speed, cfg=cfg)
 
         if vol_pct != 1.0:
             samples = samples * vol_pct
@@ -228,11 +291,11 @@ def do_save(text: str, cfg: dict):
         filepath_mp3 = target_dir / filename_mp3
         temp_wav = target_dir / f"temp_{timestamp}_{slug}.wav"
 
-        voice = cfg.get("voice", "es_MX-claude-high")
+        voice = cfg.get("voice", "kokoro-ef_dora")
         speed = float(cfg.get("speed_factor", 1.0))
 
         log(f"[SAVE] Sintetizando y guardando MP3: {filename_mp3} ({len(text)} chars)...")
-        samples, sr = synthesize_audio(text, voice_key=voice, speed_factor=speed)
+        samples, sr = synthesize_audio(text, voice_key=voice, speed_factor=speed, cfg=cfg)
 
         # Guardar temporal WAV
         sf.write(str(temp_wav), samples, sr)
