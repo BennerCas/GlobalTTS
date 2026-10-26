@@ -307,6 +307,7 @@ def test_pipeline_with_m4b_chapters_sfx_and_seo(tmp_path: Path):
 def test_ui_mainwindow_and_studio_dialogs_init():
     import os
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import QApplication
     from src.ui.tray_app import MainWindow
     from src.ui.manual_tab import MANUAL_MD_PATH, MANUAL_SECTIONS
@@ -320,7 +321,13 @@ def test_ui_mainwindow_and_studio_dialogs_init():
     win = MainWindow()
     assert win.tabs.count() == 5
     assert hasattr(win, "tab_manual")
+    assert not hasattr(win, "btn_top_manual")
+    assert win.tabs.cornerWidget(Qt.Corner.TopRightCorner) is win.tab_corner_bar
+    assert win.tab_manual.section_list.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     assert win.tab_manual.section_list.count() == len(MANUAL_SECTIONS) + 1
+    for i in range(win.tab_manual.section_list.count()):
+        item_text = win.tab_manual.section_list.item(i).text()
+        assert "\n" in item_text
     assert MANUAL_MD_PATH.exists()
     assert "MANUAL DE USO COMPLETO" in MANUAL_MD_PATH.read_text(encoding="utf-8")
 

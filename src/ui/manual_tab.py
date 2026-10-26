@@ -49,6 +49,8 @@ MANUAL_MD_PATH = PROJECT_ROOT / "MANUAL_DE_USO.md"
 class ManualSection:
     id: str
     code: str
+    nav_line1: str
+    nav_line2: str
     title: str
     subtitle: str
     markdown_body: str
@@ -59,6 +61,8 @@ MANUAL_SECTIONS: list[ManualSection] = [
     ManualSection(
         id="vision_arquitectura",
         code="§ 01",
+        nav_line1="§ 01 — Visión General & Arquitectura",
+        nav_line2="Inferencia 100% Local y Telemetría",
         title="Visión General, Arquitectura 100% Local & Telemetría",
         subtitle="Inferencia sin nube, aceleración DirectML/Olive, iGPU ROCm y barra superior de estado.",
         markdown_body="""### 1.1 Filosofía Operativa: 100% Local, Privacidad Absoluta y Costo Cero
@@ -73,15 +77,11 @@ La aplicación configura automáticamente los parámetros óptimos de inferencia
 - **Puente Central de Modelos (`C:\\antigravityAS\\Modelos -ai-brains`)**: Todos los cerebros neuronales (`Kokoro-82M`, `Piper ONNX`, `CosyVoice3 campplus.onnx`, `Mistral NeMo`) se consumen desde el repositorio central sin duplicar archivos.
 
 ### 1.3 Barra Superior de Telemetría y Accesos Rápidos de Estudio
-En la parte superior de la ventana principal encontrarás:
+En la cabecera y barra de navegación principal encontrarás:
 1. **Monitor de Hardware en Vivo (`[ HW: ... ]`)**: Se actualiza cada 2 segundos mostrando el proveedor activo (`DirectML` o `ONNX-CPU(12T)`), porcentaje de uso de **CPU**, consumo de **RAM** (`GB usados / GB totales`), tope de **VRAM (`25GB`)** y la tasa de aciertos de la **Caché Acústica SHA-256**.
-2. **`[ ↗ ] WiFi QR`**: Abre el servidor local de streaming móvil con código QR escaneable.
-3. **`[ ↗ ] Lexicon`**: Abre el gestor del Diccionario Fonético y pronunciación de siglas.
-4. **`[ ★ ] Clonar Voz`**: Abre el laboratorio de clonación biométrica de voz local.
-5. **`[ × ] Caché`**: Purga los segmentos `.npy` almacenados en la caché de disco.
-6. **`[ ? ] Manual`**: Te lleva directamente a esta pestaña de documentación interactiva.
-7. **`[ ↕ ] Modo: Auto / Vertical / Horizontal`**: Alterna la maquetación completa de la interfaz entre monitores panorámicos (`16:9`) y monitores verticales (retrato) sin perder un solo control.
-8. **`[ _ ] Minimizar`**: Oculta la ventana en la bandeja del sistema (System Tray) manteniendo activos los atajos globales.""",
+2. **`[ ↕ ] Modo: Auto / Vertical / Horizontal`**: Alterna la maquetación completa de la interfaz entre monitores panorámicos (`16:9`) y monitores verticales (retrato) sin perder un solo control.
+3. **`[ _ ] Minimizar`**: Oculta la ventana en la bandeja del sistema (System Tray) manteniendo activos los atajos globales.
+4. **Accesos de Estudio junto a las Pestañas (`[ ↗ ] WiFi QR`, `[ ↗ ] Lexicon`, `[ ★ ] Clonar Voz`, `[ × ] Caché`)**: Ubicados al costado derecho de la pestaña *Manual de Uso Completo* para abrir las herramientas de estudio desde cualquier sección.""",
         html_body="""
 <h3>1.1 Filosofía Operativa: 100% Local, Privacidad Absoluta y Costo Cero</h3>
 <p><b>GlobalTTS Studio</b> es una suite integral de ingeniería de voz, producción de audiolibros, masterización acústica DSP y renderizado de video karaoke que opera <b>100% en tu hardware local</b>, sin depender de APIs de pago en la nube ni enviar tus documentos fuera de tu equipo.</p>
@@ -95,17 +95,17 @@ En la parte superior de la ventana principal encontrarás:
   <li><b>Puente Central de Modelos:</b> Acceso directo a <code>C:\\antigravityAS\\Modelos -ai-brains</code> con cero duplicación en disco.</li>
 </ul>
 
-<h3>1.3 Barra Superior de Telemetría y Accesos Rápidos</h3>
+<h3>1.3 Barra Superior y Herramientas Rápidas en la Barra de Pestañas</h3>
 <table width="100%" cellspacing="0" cellpadding="6" style="border:1px solid #1E293B; background:#0F172A; margin-top:6px;">
   <tr style="background:#1E293B; color:#38BDF8; font-weight:bold;">
-    <td width="28%">Control Superior</td>
+    <td width="28%">Control</td>
     <td>Función Detallada</td>
   </tr>
   <tr><td><code>[ HW: ... | CPU | RAM | Cache ]</code></td><td>Muestra en tiempo real el uso de CPU, RAM, límite de VRAM (25GB) y porcentaje de aciertos de la caché acústica SHA-256.</td></tr>
-  <tr><td><code>[ ↗ ] WiFi QR</code></td><td>Inicia el micro-servidor HTTP Range 206 en tu red WiFi local y genera el código QR para escuchar en tu teléfono móvil.</td></tr>
-  <tr><td><code>[ ↗ ] Lexicon</code></td><td>Abre el Diccionario Fonético para personalizar cómo se pronuncian siglas, acrónimos, abreviaturas y extranjerismos.</td></tr>
-  <tr><td><code>[ ★ ] Clonar Voz</code></td><td>Abre el clonador biométrico de voz local basado en <code>campplus.onnx</code> y transferencia espectral de formantes.</td></tr>
-  <tr><td><code>[ × ] Caché</code></td><td>Limpia los vectores acústicos almacenados en <code>cache/tts_segments/</code> y libera espacio en disco.</td></tr>
+  <tr><td><code>[ ↗ ] WiFi QR</code></td><td>Ubicado al costado de la barra de pestañas: inicia el servidor HTTP Range 206 en tu red WiFi local y genera el código QR móvil.</td></tr>
+  <tr><td><code>[ ↗ ] Lexicon</code></td><td>Ubicado al costado de la barra de pestañas: abre el Diccionario Fonético para personalizar siglas, acrónimos y extranjerismos.</td></tr>
+  <tr><td><code>[ ★ ] Clonar Voz</code></td><td>Ubicado al costado de la barra de pestañas: abre el clonador biométrico de voz local basado en <code>campplus.onnx</code>.</td></tr>
+  <tr><td><code>[ × ] Caché</code></td><td>Ubicado al costado de la barra de pestañas: limpia los vectores acústicos almacenados en <code>cache/tts_segments/</code>.</td></tr>
   <tr><td><code>[ ↕ ] Modo: Auto / Vertical / Horizontal</code></td><td>Adapta dinámicamente toda la interfaz a pantallas horizontales (16:9) o monitores verticales sin recortar controles.</td></tr>
   <tr><td><code>[ _ ] Minimizar</code></td><td>Envía la aplicación a la bandeja del sistema (System Tray) manteniendo activos los atajos de lectura global.</td></tr>
 </table>
@@ -114,6 +114,8 @@ En la parte superior de la ventana principal encontrarás:
     ManualSection(
         id="atajos_globales",
         code="§ 02",
+        nav_line1="§ 02 — Atajos Globales del Sistema",
+        nav_line2="AutoHotkey v2 y Captura en Vivo",
         title="Atajos Globales del Sistema (AutoHotkey v2 & Captura en Vivo)",
         subtitle="Cómo leer en voz alta o exportar a MP3 cualquier texto seleccionado en Windows.",
         markdown_body="""### 2.1 Cómo Funcionan los Atajos Globales
@@ -176,6 +178,8 @@ Si en algún momento cierras AutoHotkey desde el Administrador de Tareas, simple
     ManualSection(
         id="lectura_rapida",
         code="§ 03",
+        nav_line1="§ 03 — Pestaña 1: Lectura Rápida",
+        nav_line2="Editor en Vivo, SFX y Configuración",
         title="Pestaña 1: Lectura Rápida & Configuración Profesional",
         subtitle="Editor en vivo, inserción de etiquetas prosódicas/SFX, historial infinito y ajustes del sistema.",
         markdown_body="""### 3.1 El Editor de Lectura en Tiempo Real
@@ -220,6 +224,8 @@ Cada vez que pulsas **`[ ► ] Leer en Voz Alta`**, el audio generado se registr
     ManualSection(
         id="generador_lotes_ingesta",
         code="§ 04",
+        nav_line1="§ 04 — Pestaña 2: Generador en Lote",
+        nav_line2="Ingesta PDF/EPUB/OCR y Cola Activa",
         title="Pestaña 2: Generador de Audiolibros, OCR & Cola en Lote",
         subtitle="Ingesta de PDF/EPUB/TXT/Imágenes OCR/URLs, limpieza editorial y control de cola.",
         markdown_body="""### 4.1 Formatos de Entrada Soportados
@@ -267,6 +273,8 @@ Cuando la casilla **`Limpieza Editorial`** está marcada (activa por defecto), e
     ManualSection(
         id="voces_autocasting_clonacion",
         code="§ 05",
+        nav_line1="§ 05 — Voces Neurales 24kHz & Casting",
+        nav_line2="Auto-Casting y Clonación Biométrica",
         title="Voces Neurales (24kHz), Auto-Casting Multi-Voz & Clonación Biométrica",
         subtitle="Catálogo de 15 voces base, reparto automático de diálogos y clonación con campplus.onnx.",
         markdown_body="""### 5.1 Motores de Voz Integrados (Kokoro 24kHz Studio & Piper ONNX)
@@ -313,6 +321,8 @@ Puedes clonar el timbre, tono y cadencia de cualquier locutor a partir de una gr
     ManualSection(
         id="ia_narrativa_prompts",
         code="§ 06",
+        nav_line1="§ 06 — Expresividad y Narración IA",
+        nav_line2="Mistral NeMo 12B y Prompts Maestros",
         title="Expresividad, Narración IA (Mistral NeMo 12B) & Prompts Maestros",
         subtitle="Los 4 modos de IA, los 9 estilos narrativos y el editor de Prompts Maestros.",
         markdown_body="""### 6.1 Cómo Activar el Motor Narrativo Local (Mistral NeMo 12B)
@@ -369,6 +379,8 @@ En la pestaña **PROMPTS MAESTROS & ESTILOS IA** puedes inspeccionar, editar, cr
     ManualSection(
         id="acustica_dsp_sfx_soundscapes",
         code="§ 07",
+        nav_line1="§ 07 — Ingeniería Acústica & DSP",
+        nav_line2="Mastering, Soundscapes, SFX y Cuñas",
         title="Ingeniería Acústica: Masterización DSP, Soundscapes, SFX & Cuñas",
         subtitle="Cadena DSP de 5 etapas, música ambiental con Auto-Ducking, Foley SFX y cuñas radiales.",
         markdown_body="""### 7.1 Cadena de Masterización DSP de Estudio (5 Etapas)
@@ -416,6 +428,8 @@ En la sección *Portada y Cuñas Intersticiales* puedes activar **`Insertar cuñ
     ManualSection(
         id="portadas_trailers_formatos",
         code="§ 08",
+        nav_line1="§ 08 — Portadas IA y Formatos Master",
+        nav_line2="Carátulas 1024px, Trailer 90s y .M4B",
         title="Portadas IA 1024x1024, Trailers de 90s y Formatos Master (.M4B / .MP3 / .FLAC)",
         subtitle="Generación de arte de portada, sinopsis dramatizada y exportación por capítulos.",
         markdown_body="""### 8.1 Portada Editorial IA Automática (`Portada IA 1024x1024`)
@@ -458,6 +472,8 @@ Cada libro procesado crea su propio directorio en `biblioteca/<nombre_del_libro>
     ManualSection(
         id="video_karaoke_subtitulos",
         code="§ 09",
+        nav_line1="§ 09 — Video Karaoke MP4 (16:9 / 9:16)",
+        nav_line2="Audiograma en Vivo y Subtítulos",
         title="Video Karaoke MP4 (16:9 y 9:16), Audiograma & Subtítulos",
         subtitle="Renderizado con espectro de onda en vivo, formato vertical TikTok/Reels y .SRT/.VTT/.LRC.",
         markdown_body="""### 9.1 Modos Visuales de Video Karaoke (`Video`)
@@ -495,6 +511,8 @@ En el selector **`Subtítulos`** dispones de 5 estilos cromáticos (`Cian Ejecut
     ManualSection(
         id="biblioteca_reproductor",
         code="§ 10",
+        nav_line1="§ 10 — Pestaña 3: Biblioteca & Player",
+        nav_line2="Capítulos, Velocidad y Exportación ZIP",
         title="Pestaña 3: Biblioteca & Reproductor Multimedia Avanzado",
         subtitle="Búsqueda instantánea, selector de capítulos/trailer, velocidad 0.75x-2.0x y exportación ZIP.",
         markdown_body="""### 10.1 Organización de la Biblioteca
@@ -532,6 +550,8 @@ La pestaña **BIBLIOTECA & REPRODUCTOR** reúne todas tus producciones en dos su
     ManualSection(
         id="distribucion_wifi_seo_rss",
         code="§ 11",
+        nav_line1="§ 11 — Distribución WiFi QR & SEO",
+        nav_line2="Streaming Móvil, YouTube y RSS 2.0",
         title="Distribución: Streaming Móvil WiFi (QR) & Kit SEO YouTube / Spotify / RSS",
         subtitle="Cómo escuchar en tu teléfono sin cables y cómo publicar en YouTube y Spotify.",
         markdown_body="""### 11.1 Servidor WiFi de Streaming Móvil (`[ ↗ ] WiFi QR`)
@@ -569,6 +589,8 @@ Junto al archivo SEO se genera **`podcast_rss.xml`**, un feed XML estándar RSS 
     ManualSection(
         id="lexicon_cache_troubleshooting",
         code="§ 12",
+        nav_line1="§ 12 — Diccionario Fonético & Caché",
+        nav_line2="Reglas Lexicon, SHA-256 y Soporte",
         title="Diccionario Fonético (Lexicon), Caché SHA-256 & Solución de Problemas",
         subtitle="Reglas de pronunciación, optimización de caché en disco y diagnóstico técnico.",
         markdown_body="""### 12.1 Cómo Personalizar la Pronunciación en el Diccionario Fonético (`[ ↗ ] Lexicon`)
@@ -734,7 +756,16 @@ class ManualTab(QWidget):
         idx_lay.addWidget(lbl_idx)
 
         self.section_list = QListWidget()
+        self.section_list.setWordWrap(True)
+        self.section_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.section_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.section_list.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 0px; background: transparent; }")
+        self.section_list.horizontalScrollBar().setStyleSheet("QScrollBar:horizontal { height: 0px; background: transparent; }")
+        self.section_list.setStyleSheet(
+            "QListWidget { background-color: #0B0F19; border: 1px solid #1E293B; border-radius: 6px; padding: 3px; } "
+            "QListWidget::item { padding: 6px 8px; border-bottom: 1px solid #161F30; border-radius: 4px; color: #E2E8F0; } "
+            "QListWidget::item:selected { background-color: #1E3A8A; color: #38BDF8; font-weight: 700; }"
+        )
         self.section_list.currentRowChanged.connect(self.on_section_row_changed)
         idx_lay.addWidget(self.section_list, stretch=1)
 
@@ -761,7 +792,9 @@ class ManualTab(QWidget):
 
         self.browser = QTextBrowser()
         self.browser.setOpenExternalLinks(True)
+        self.browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.browser.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 0px; background: transparent; }")
+        self.browser.horizontalScrollBar().setStyleSheet("QScrollBar:horizontal { height: 0px; background: transparent; }")
         self.browser.setStyleSheet(
             "QTextBrowser { background-color: #0B0F19; color: #E2E8F0; border: 1px solid #1E293B; "
             "border-radius: 6px; padding: 14px; font-size: 13px; line-height: 1.55; }"
@@ -781,8 +814,8 @@ class ManualTab(QWidget):
         self.section_list.clear()
         q = filter_query.strip().lower()
 
-        # Opción 0: Manual Completo Integrado
-        all_item = QListWidgetItem("[ ◈ ] MANUAL COMPLETO (VISTA INTEGRAL)")
+        # Opción 0: Manual Completo Integrado (en 2 líneas de texto)
+        all_item = QListWidgetItem("[ ◈ ] MANUAL COMPLETO\n   Vista Integral de los 12 Capítulos")
         all_item.setData(Qt.ItemDataRole.UserRole, "__ALL__")
         self.section_list.addItem(all_item)
 
@@ -792,8 +825,8 @@ class ManualTab(QWidget):
             if q and q not in haystack:
                 continue
             matched_sections += 1
-            item = QListWidgetItem(f"{sec.code} — {sec.title}")
-            item.setToolTip(sec.subtitle)
+            item = QListWidgetItem(f"{sec.nav_line1}\n   {sec.nav_line2}")
+            item.setToolTip(f"{sec.code} — {sec.title}\n{sec.subtitle}")
             item.setData(Qt.ItemDataRole.UserRole, sec.id)
             self.section_list.addItem(item)
 

@@ -248,36 +248,6 @@ class MainWindow(QDialog):
         self.lbl_hw_telemetry.setToolTip("Telemetría de Hardware y Runtime ONNX/DirectML en Tiempo Real")
         top_bar.addWidget(self.lbl_hw_telemetry)
 
-        self.btn_top_wifi = QPushButton("[ ↗ ] WiFi QR")
-        self.btn_top_wifi.setObjectName("secondaryActionButton")
-        self.btn_top_wifi.setToolTip("Abrir Servidor Local de Streaming Móvil con Código QR")
-        self.btn_top_wifi.clicked.connect(self.open_mobile_streaming_dialog)
-        top_bar.addWidget(self.btn_top_wifi)
-
-        self.btn_top_lexicon = QPushButton("[ ↗ ] Lexicon")
-        self.btn_top_lexicon.setObjectName("secondaryActionButton")
-        self.btn_top_lexicon.setToolTip("Diccionario Fonético Personalizado y Pronunciación")
-        self.btn_top_lexicon.clicked.connect(self.open_lexicon_dialog)
-        top_bar.addWidget(self.btn_top_lexicon)
-
-        self.btn_top_cloner = QPushButton("[ ★ ] Clonar Voz")
-        self.btn_top_cloner.setObjectName("secondaryActionButton")
-        self.btn_top_cloner.setToolTip("Clonador Biométrico de Voz Local (CampPlus ONNX)")
-        self.btn_top_cloner.clicked.connect(self.open_voice_cloner_dialog)
-        top_bar.addWidget(self.btn_top_cloner)
-
-        self.btn_top_cache = QPushButton("[ × ] Caché")
-        self.btn_top_cache.setObjectName("secondaryActionButton")
-        self.btn_top_cache.setToolTip("Purgar caché en disco de segmentos de voz sintetizados")
-        self.btn_top_cache.clicked.connect(self.clear_audio_cache_action)
-        top_bar.addWidget(self.btn_top_cache)
-
-        self.btn_top_manual = QPushButton("[ ? ] Manual")
-        self.btn_top_manual.setObjectName("secondaryActionButton")
-        self.btn_top_manual.setToolTip("Abrir el Manual de Uso Completo y Documentación de GlobalTTS")
-        self.btn_top_manual.clicked.connect(lambda: self.tabs.setCurrentIndex(4))
-        top_bar.addWidget(self.btn_top_manual)
-
         self.btn_orientation = QPushButton("[ ↕ ] Modo: Auto (Vertical)")
         self.btn_orientation.setObjectName("secondaryActionButton")
         self.btn_orientation.setToolTip("Alterna la distribución de la app entre Vertical (Monitores Retrato) y Horizontal (Panorámico)")
@@ -317,6 +287,38 @@ class MainWindow(QDialog):
         # Pestaña 5: Manual de Uso Completo
         self.tab_manual = ManualTab()
         self.tabs.addTab(self.tab_manual, "MANUAL DE USO COMPLETO")
+
+        # Botones de Estudio ubicados en la fila de pestañas (al costado de MANUAL DE USO COMPLETO)
+        self.tab_corner_bar = QWidget()
+        corner_lay = QHBoxLayout(self.tab_corner_bar)
+        corner_lay.setContentsMargins(4, 2, 0, 0)
+        corner_lay.setSpacing(4)
+
+        self.btn_top_wifi = QPushButton("[ ↗ ] WiFi QR")
+        self.btn_top_wifi.setObjectName("tabCornerButton")
+        self.btn_top_wifi.setToolTip("Abrir Servidor Local de Streaming Móvil con Código QR")
+        self.btn_top_wifi.clicked.connect(self.open_mobile_streaming_dialog)
+        corner_lay.addWidget(self.btn_top_wifi)
+
+        self.btn_top_lexicon = QPushButton("[ ↗ ] Lexicon")
+        self.btn_top_lexicon.setObjectName("tabCornerButton")
+        self.btn_top_lexicon.setToolTip("Diccionario Fonético Personalizado y Pronunciación")
+        self.btn_top_lexicon.clicked.connect(self.open_lexicon_dialog)
+        corner_lay.addWidget(self.btn_top_lexicon)
+
+        self.btn_top_cloner = QPushButton("[ ★ ] Clonar Voz")
+        self.btn_top_cloner.setObjectName("tabCornerButton")
+        self.btn_top_cloner.setToolTip("Clonador Biométrico de Voz Local (CampPlus ONNX)")
+        self.btn_top_cloner.clicked.connect(self.open_voice_cloner_dialog)
+        corner_lay.addWidget(self.btn_top_cloner)
+
+        self.btn_top_cache = QPushButton("[ × ] Caché")
+        self.btn_top_cache.setObjectName("tabCornerButton")
+        self.btn_top_cache.setToolTip("Purgar caché en disco de segmentos de voz sintetizados")
+        self.btn_top_cache.clicked.connect(self.clear_audio_cache_action)
+        corner_lay.addWidget(self.btn_top_cache)
+
+        self.tabs.setCornerWidget(self.tab_corner_bar, Qt.Corner.TopRightCorner)
 
         main_layout.addWidget(self.tabs)
 

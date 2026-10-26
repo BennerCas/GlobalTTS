@@ -19,15 +19,11 @@ La aplicación configura automáticamente los parámetros óptimos de inferencia
 - **Puente Central de Modelos (`C:\antigravityAS\Modelos -ai-brains`)**: Todos los cerebros neuronales (`Kokoro-82M`, `Piper ONNX`, `CosyVoice3 campplus.onnx`, `Mistral NeMo`) se consumen desde el repositorio central sin duplicar archivos.
 
 ### 1.3 Barra Superior de Telemetría y Accesos Rápidos de Estudio
-En la parte superior de la ventana principal encontrarás:
+En la cabecera y barra de navegación principal encontrarás:
 1. **Monitor de Hardware en Vivo (`[ HW: ... ]`)**: Se actualiza cada 2 segundos mostrando el proveedor activo (`DirectML` o `ONNX-CPU(12T)`), porcentaje de uso de **CPU**, consumo de **RAM** (`GB usados / GB totales`), tope de **VRAM (`25GB`)** y la tasa de aciertos de la **Caché Acústica SHA-256**.
-2. **`[ ↗ ] WiFi QR`**: Abre el servidor local de streaming móvil con código QR escaneable.
-3. **`[ ↗ ] Lexicon`**: Abre el gestor del Diccionario Fonético y pronunciación de siglas.
-4. **`[ ★ ] Clonar Voz`**: Abre el laboratorio de clonación biométrica de voz local.
-5. **`[ × ] Caché`**: Purga los segmentos `.npy` almacenados en la caché de disco.
-6. **`[ ? ] Manual`**: Te lleva directamente a esta pestaña de documentación interactiva.
-7. **`[ ↕ ] Modo: Auto / Vertical / Horizontal`**: Alterna la maquetación completa de la interfaz entre monitores panorámicos (`16:9`) y monitores verticales (retrato) sin perder un solo control.
-8. **`[ _ ] Minimizar`**: Oculta la ventana en la bandeja del sistema (System Tray) manteniendo activos los atajos globales.
+2. **`[ ↕ ] Modo: Auto / Vertical / Horizontal`**: Alterna la maquetación completa de la interfaz entre monitores panorámicos (`16:9`) y monitores verticales (retrato) sin perder un solo control.
+3. **`[ _ ] Minimizar`**: Oculta la ventana en la bandeja del sistema (System Tray) manteniendo activos los atajos globales.
+4. **Accesos de Estudio junto a las Pestañas (`[ ↗ ] WiFi QR`, `[ ↗ ] Lexicon`, `[ ★ ] Clonar Voz`, `[ × ] Caché`)**: Ubicados al costado derecho de la pestaña *Manual de Uso Completo* para abrir las herramientas de estudio desde cualquier sección.
 
 ---
 

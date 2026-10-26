@@ -351,7 +351,7 @@ QHeaderView::section {
 QTabBar::tab {
     background: #0c1017;
     color: #64748b;
-    padding: 9px 20px;
+    padding: 8px 14px;
     font-weight: 600;
     font-size: 12px;
     border-top-left-radius: 6px;
@@ -359,6 +359,26 @@ QTabBar::tab {
     margin-right: 3px;
     border: 1px solid #161e2b;
     border-bottom: none;
+}
+
+QPushButton#tabCornerButton {
+    background: #0c1017;
+    color: #38bdf8;
+    padding: 6px 11px;
+    font-weight: 700;
+    font-size: 11px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    border-bottom-left-radius: 0px;
+    border-bottom-right-radius: 0px;
+    border: 1px solid #1e293b;
+    border-bottom: none;
+}
+
+QPushButton#tabCornerButton:hover {
+    background: #131c2b;
+    color: #ffffff;
+    border-color: #38bdf8;
 }
 
 QTabBar::tab:selected {
