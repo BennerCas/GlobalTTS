@@ -704,6 +704,7 @@ class MainWindow(QDialog):
         default_idx = self.voice_combo.findData(default_pref)
         if default_idx >= 0:
             self.voice_combo.setCurrentIndex(default_idx)
+        self.voice_combo.currentIndexChanged.connect(self.on_generator_voice_changed)
         v_main_row.addWidget(self.voice_combo, stretch=1)
 
         btn_clone_gen = QPushButton("[ ★ ] Clonar Voz...")
@@ -1375,12 +1376,28 @@ class MainWindow(QDialog):
         except Exception as e:
             QMessageBox.warning(self, "Error al probar voz", f"No se pudo sintetizar la muestra:\n{e}")
 
+    def on_generator_voice_changed(self):
+        v_text = self.voice_combo.currentText()
+        if not v_text:
+            return
+        for idx, item in enumerate(self.batch_files):
+            if item.get("status") == "Pendiente":
+                item["voice_label"] = v_text
+                if idx < self.batch_table.rowCount():
+                    self.batch_table.setItem(idx, 1, QTableWidgetItem(v_text))
+
     def start_batch_processing(self):
         if not self.batch_files:
             QMessageBox.warning(self, "Lista Vacía", "Por favor agrega al menos un archivo o URL para procesar.")
             return
 
-        if not (self.chk_mp3.isChecked() or self.chk_m4b.isChecked() or self.chk_video.isChecked() or self.chk_flac.isChecked()):
+        if not (
+            self.chk_mp3.isChecked()
+            or self.chk_m4b.isChecked()
+            or self.chk_epub3.isChecked()
+            or self.chk_video.isChecked()
+            or self.chk_flac.isChecked()
+        ):
             QMessageBox.warning(self, "Sin formato", "Selecciona al menos un formato de salida.")
             return
 
@@ -1398,7 +1415,7 @@ class MainWindow(QDialog):
                 v_combo = self.table_cunas.cellWidget(r, 2)
                 v_key = v_combo.currentData() if v_combo else self.voice_combo.currentData()
 
-                st_combo = self.table_cunas.cellWidget(row, 3) if False else self.table_cunas.cellWidget(r, 3)
+                st_combo = self.table_cunas.cellWidget(r, 3)
                 st = st_combo.currentData() if st_combo else "locutor_radio"
 
                 pause_item = self.table_cunas.item(r, 4)
@@ -1441,7 +1458,7 @@ class MainWindow(QDialog):
                 multi_voice_mode="dialogue_auto" if self.chk_autocast.isChecked() else "single",
                 cover_image_path=self.cover_edit.text().strip() or None,
                 generate_cover_ai=self.chk_auto_cover_ai.isChecked(),
-                generate_audio=self.chk_mp3.isChecked() or self.chk_m4b.isChecked(),
+                generate_audio=self.chk_mp3.isChecked() or self.chk_m4b.isChecked() or self.chk_epub3.isChecked(),
                 export_m4b=self.chk_m4b.isChecked(),
                 export_epub3=self.chk_epub3.isChecked(),
                 split_chapters=self.chk_split_chapters.isChecked(),

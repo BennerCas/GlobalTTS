@@ -26,6 +26,7 @@ def main():
     parser.add_argument("--no-video", action="store_true", help="No generar video karaoke MP4")
     parser.add_argument("--no-audio", action="store_true", help="No guardar archivo MP3")
     parser.add_argument("--m4b", action="store_true", help="Exportar audiolibro nativo .M4B con índice de capítulos")
+    parser.add_argument("--epub3", action="store_true", help="Exportar libro electrónico sincronizado EPUB3 Read-Aloud (SMIL)")
     parser.add_argument("--split-chapters", action="store_true", help="Exportar pistas MP3 individuales por capítulo")
     parser.add_argument("--trailer", action="store_true", help="Generar Audio-Trailer promocional de 90 segundos")
     parser.add_argument("--cover-ai", action="store_true", help="Generar portada editorial 1024x1024 con IA local")
@@ -63,6 +64,7 @@ def main():
         generate_audio=not args.no_audio,
         generate_video=not args.no_video,
         export_m4b=args.m4b,
+        export_epub3=args.epub3,
         split_chapters=args.split_chapters,
         generate_trailer=args.trailer,
         generate_cover_ai=args.cover_ai,

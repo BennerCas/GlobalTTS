@@ -104,13 +104,50 @@ class ParseResult:
     warnings: tuple[str, ...]
 
 
+_DYNAMIC_EFFECTS_MTIME: float = -1.0
+_DYNAMIC_EFFECTS_CACHE: dict[str, _Effect] = {}
+
+
+def _get_dynamic_effects() -> dict[str, _Effect]:
+    """Sincroniza en caché los estilos personalizados o editados desde prompts_master.json."""
+    global _DYNAMIC_EFFECTS_MTIME, _DYNAMIC_EFFECTS_CACHE
+    try:
+        from src.ai.prompt_library import MASTER_PROMPTS_FILE, PromptLibrary
+        if MASTER_PROMPTS_FILE.exists():
+            mtime = MASTER_PROMPTS_FILE.stat().st_mtime
+            if mtime != _DYNAMIC_EFFECTS_MTIME:
+                lib = PromptLibrary()
+                dyn: dict[str, _Effect] = {}
+                for st in lib.list_styles():
+                    sid = st.id.strip().lower()
+                    base_eff = EFFECTS.get(sid)
+                    dyn[sid] = _Effect(
+                        speed=float(st.speed_multiplier),
+                        gain_db=float(st.gain_db),
+                        instruct=base_eff.instruct if base_eff else (st.description[:80] if st.description else st.name),
+                    )
+                _DYNAMIC_EFFECTS_CACHE = dyn
+                _DYNAMIC_EFFECTS_MTIME = mtime
+    except Exception:
+        pass
+    return _DYNAMIC_EFFECTS_CACHE
+
+
+def _resolve_effect(name: str) -> _Effect | None:
+    dyn = _get_dynamic_effects()
+    if name in dyn:
+        return dyn[name]
+    return EFFECTS.get(name)
+
+
 def _canon(raw: str) -> str | None:
     name = raw.strip().lower()
     name = _ALIASES.get(name, name)
-    if name not in EFFECTS and name not in _SPECIAL:
+    dyn = _get_dynamic_effects()
+    if name not in EFFECTS and name not in dyn and name not in _SPECIAL:
         stripped = "".join(c for c in unicodedata.normalize("NFD", name) if unicodedata.category(c) != "Mn")
         name = _ALIASES.get(stripped, stripped)
-    return name if name in EFFECTS or name in _SPECIAL else None
+    return name if (name in EFFECTS or name in dyn or name in _SPECIAL) else None
 
 
 def _parse_seconds(arg: str | None, warnings: list[str]) -> float:
@@ -134,10 +171,10 @@ def _fold(stack: list[tuple[str, str | None]]) -> Style:
         if name == "voz":
             voice = arg
             continue
-        eff = EFFECTS[name]
+        eff = _resolve_effect(name) or _Effect()
         speed *= eff.speed
         gain += eff.gain_db
-        if eff.instruct not in instruct:
+        if eff.instruct and eff.instruct not in instruct:
             instruct.append(eff.instruct)
     return Style(speed=speed, gain_db=gain, voice=voice, instruct=tuple(instruct))
 

@@ -282,6 +282,7 @@ def test_pipeline_with_m4b_chapters_sfx_and_seo(tmp_path: Path):
         output_dir=str(out_dir),
         generate_audio=True,
         export_m4b=True,
+        export_epub3=True,
         split_chapters=True,
         generate_trailer=True,
         generate_video=False,
@@ -296,12 +297,15 @@ def test_pipeline_with_m4b_chapters_sfx_and_seo(tmp_path: Path):
 
     assert meta.output_audio_path and Path(meta.output_audio_path).exists()
     assert meta.output_m4b_path and Path(meta.output_m4b_path).exists()
+    assert meta.output_epub3_path and Path(meta.output_epub3_path).exists()
     assert meta.output_trailer_path and Path(meta.output_trailer_path).exists()
     doc_folder = Path(meta.document_folder)
     assert (doc_folder / "youtube_spotify_seo.txt").exists()
     assert (doc_folder / "podcast_rss.xml").exists()
     assert (doc_folder / "cover.png").exists()
     assert len(meta.chapters_info) >= 1
+    assert meta.style == "cuento"
+    assert meta.title != ""
 
 
 def test_ui_mainwindow_and_studio_dialogs_init():

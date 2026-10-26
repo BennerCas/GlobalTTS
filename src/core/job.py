@@ -39,7 +39,7 @@ from src.core.editorial_cleaner import clean_inline_editorial_noise
 from src.core.emotion_analyzer import apply_emotional_modulation
 from src.core.lexicon import PhoneticLexicon
 from src.core.models import Chapter, Document
-from src.core.publisher import generate_publication_package
+from src.core.publisher import export_epub3_readaloud, generate_publication_package
 from src.core.text_clean import make_filename_slug
 from src.core.utterances import Utterance, build_utterances
 from src.ingest.loader import load_document
@@ -78,6 +78,7 @@ class JobConfig:
     interstitials: list[InterstitialItem] = field(default_factory=list)
     # Nuevas capacidades de estudio (100% reales y retrocompatibles)
     export_m4b: bool = False
+    export_epub3: bool = False
     split_chapters: bool = False
     clean_editorial: bool = True
     apply_lexicon: bool = True
@@ -121,8 +122,13 @@ class JobMetadata:
     archivos_generados: dict = field(default_factory=dict)
     app_version: str = "2.5.0"
     output_m4b_path: Optional[str] = None
+    output_epub3_path: Optional[str] = None
     output_trailer_path: Optional[str] = None
     chapters_info: list[dict] = field(default_factory=list)
+    title: str = ""
+    author: str = ""
+    style: str = "cuento"
+    narration: dict = field(default_factory=dict)
 
 
 class AudiobookPipeline:
@@ -451,7 +457,7 @@ class AudiobookPipeline:
 
         # 11. Conversión a MP3 de alta calidad con portada y metadatos ID3
         out_audio_str = None
-        if self.config.generate_audio:
+        if self.config.generate_audio or self.config.export_epub3:
             emit_stage("normalize", "Normalizando audio a MP3 alta calidad con portada...", 78.0)
             assembler.convert_to_mp3(
                 wav_path=temp_wav,
@@ -463,7 +469,8 @@ class AudiobookPipeline:
                 comment=f"Firma: {firma_str} | Fecha: {fecha_str} {hora_str} | Duración: {dur_fmt}",
                 date=fecha_str,
             )
-            out_audio_str = str(final_mp3.resolve())
+            if final_mp3.exists():
+                out_audio_str = str(final_mp3.resolve())
 
         # 11.1 Exportar Audiolibro Nativo .M4B con índice de capítulos y portada
         out_m4b_str = None
@@ -479,6 +486,21 @@ class AudiobookPipeline:
             )
             if m4b_file and m4b_file.exists():
                 out_m4b_str = str(m4b_file.resolve())
+
+        # 11.1b Exportar Libro Electrónico Sincronizado EPUB3 Read-Aloud (SMIL Media Overlays)
+        out_epub3_str = None
+        if self.config.export_epub3 and final_mp3.exists():
+            emit_stage("epub3", "Empaquetando libro electrónico sincronizado EPUB3 Read-Aloud (SMIL)...", 82.0)
+            epub_file = export_epub3_readaloud(
+                output_epub_path=book_folder / f"{slug}_readaloud.epub",
+                title=doc_display_title,
+                author=doc.author or firma_str,
+                sentences=assembly_res.sentences,
+                audio_mp3_path=final_mp3,
+                cover_image_path=copied_cover_path,
+            )
+            if epub_file and epub_file.exists():
+                out_epub3_str = str(epub_file.resolve())
 
         # 11.2 Exportar capítulos individuales divididos si se solicitó
         split_ch_files: list[Path] = []
@@ -586,6 +608,14 @@ class AudiobookPipeline:
                 "tamano_mb": f"{sz / (1024 * 1024):.2f} MB",
                 "formato": "Audiolibro M4B (Capítulos Navegables)",
             }
+        if out_epub3_str and Path(out_epub3_str).exists():
+            sz = Path(out_epub3_str).stat().st_size
+            archivos_dict["epub3_readaloud"] = {
+                "ruta": out_epub3_str,
+                "tamano_bytes": sz,
+                "tamano_mb": f"{sz / (1024 * 1024):.2f} MB",
+                "formato": "EPUB3 Read-Aloud (SMIL Media Overlays)",
+            }
         if out_master_str and Path(out_master_str).exists():
             sz = Path(out_master_str).stat().st_size
             archivos_dict["master_flac"] = {
@@ -640,6 +670,7 @@ class AudiobookPipeline:
             if str(self.config.source_file).startswith(("http://", "https://"))
             else str(Path(self.config.source_file).resolve())
         )
+        narration_dict = asdict(self.config.narration) if self.config.narration else {"style": active_style}
         metadata = JobMetadata(
             job_id=job_id,
             document_folder=str(book_folder.resolve()),
@@ -655,12 +686,14 @@ class AudiobookPipeline:
                 "loudnorm": "EBU R128 (-16 LUFS) + Studio DSP (-1.0 dBTP)",
                 "multi_voice_mode": self.config.multi_voice_mode,
                 "narration_enabled": bool(self.config.narration and self.config.narration.enabled),
+                "style": active_style,
                 "dsp_mastering": self.config.dsp_mastering,
                 "soundscape_preset": self.config.soundscape_preset,
                 "video_aspect_ratio": self.config.video_aspect_ratio,
                 "video_background": self.config.video_background,
                 "subtitle_theme": self.config.subtitle_theme,
                 "export_m4b": self.config.export_m4b,
+                "export_epub3": self.config.export_epub3,
                 "split_chapters": self.config.split_chapters,
             },
             source_file=src_resolved,
@@ -679,8 +712,13 @@ class AudiobookPipeline:
             duracion_formato=dur_fmt,
             archivos_generados=archivos_dict,
             output_m4b_path=out_m4b_str,
+            output_epub3_path=out_epub3_str,
             output_trailer_path=out_trailer_str,
             chapters_info=[asdict(c) for c in ch_timings],
+            title=doc_display_title,
+            author=doc.author or firma_str,
+            style=active_style,
+            narration=narration_dict,
         )
 
         metadata_path = book_folder / f"{job_id}_metadata.json"
@@ -709,7 +747,11 @@ class AudiobookPipeline:
             if len(samples) == 0:
                 return None
 
-            bgm_preset = "mystery_thriller" if style in ("terror", "misterio") else "ambient_drone"
+            bgm_preset = (
+                "mystery_thriller"
+                if style in ("terror", "terror_psicologico", "misterio", "true_crime_documental", "cyberpunk_scifi")
+                else ("fireplace" if style in ("cuento", "cuentacuentos", "confesion_intima", "poesia", "poetico_lirico") else "ambient_drone")
+            )
             mixed = mix_voice_with_soundscape(
                 voice_samples=samples,
                 sample_rate=tts.sample_rate,

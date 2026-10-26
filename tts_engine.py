@@ -201,6 +201,33 @@ def synthesize_audio(text: str, voice_key: str, speed_factor: float = 1.0, cfg: 
     HardwareMonitor().enforce_environment()
     cfg = cfg or {}
     proc_text = text
+    style_id = cfg.get("style_id", "cuento")
+
+    if cfg.get("ai_enabled", False):
+        try:
+            from src.ai.nemo_enhancer import MistralNeMoEnhancer, NarrationConfig
+            enhancer = MistralNeMoEnhancer()
+            if enhancer.is_available():
+                ai_mode = str(cfg.get("ai_mode", "enhance"))
+                if ai_mode == "rewrite":
+                    ncfg = NarrationConfig(
+                        enabled=True,
+                        mode="rewrite",
+                        persona=str(cfg.get("persona", "3ra")),
+                        tense=str(cfg.get("tense", "pasado")),
+                        style=style_id,
+                    )
+                    proc_text = enhancer.rewrite_as_narration(proc_text, ncfg)
+                elif ai_mode == "translate":
+                    proc_text = enhancer.translate_and_adapt(proc_text, target_lang="es-LA")
+                elif ai_mode == "sfx_director":
+                    proc_text = enhancer.direct_sfx_and_soundscape(proc_text)
+                elif ai_mode == "trailer_script":
+                    proc_text = enhancer.generate_synopsis_trailer_script(proc_text, style=style_id)
+                else:
+                    proc_text = enhancer.enhance_expressiveness(proc_text)
+        except Exception:
+            pass
 
     if cfg.get("auto_sfx", False):
         proc_text = inject_semantic_sfx_tags(proc_text)
@@ -209,13 +236,12 @@ def synthesize_audio(text: str, voice_key: str, speed_factor: float = 1.0, cfg: 
 
     eff_speed = float(speed_factor)
     eff_gain = 0.0
-    style_id = cfg.get("style_id", "cuento")
     if style_id:
         st_obj = PromptLibrary().get_style(style_id)
         if st_obj:
             eff_speed *= float(st_obj.speed_multiplier)
             eff_gain += float(st_obj.gain_db)
-        if f"[{style_id}]" not in proc_text:
+        elif f"[{style_id}]" not in proc_text:
             proc_text = f"[{style_id}]{proc_text}[/{style_id}]"
 
     if cfg.get("emotional_modulation", True):

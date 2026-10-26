@@ -130,7 +130,7 @@ class TtsPlayWorker(QThread):
             if st_obj:
                 eff_speed = eff_speed * float(st_obj.speed_multiplier)
                 eff_gain += float(st_obj.gain_db)
-            if self.style_id and f"[{self.style_id}]" not in proc_text:
+            elif self.style_id and f"[{self.style_id}]" not in proc_text:
                 proc_text = f"[{self.style_id}]{proc_text}[/{self.style_id}]"
 
             if self.emotional_modulation:
@@ -981,7 +981,7 @@ class QuickReaderTab(QWidget):
             if st_obj:
                 eff_speed *= float(st_obj.speed_multiplier)
                 eff_gain += float(st_obj.gain_db)
-            if style_id and f"[{style_id}]" not in proc_text:
+            elif style_id and f"[{style_id}]" not in proc_text:
                 proc_text = f"[{style_id}]{proc_text}[/{style_id}]"
             if self.chk_emotion_mod.isChecked():
                 emo = analyze_sentence_emotion(proc_text)
