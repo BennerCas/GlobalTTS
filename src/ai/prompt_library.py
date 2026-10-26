@@ -442,6 +442,16 @@ class PromptLibrary:
         self.save()
         return style
 
+    def delete_style(self, style_id: str) -> bool:
+        """Elimina un estilo narrativo personalizado (protege los 16 estilos base)."""
+        if style_id in STYLE_ACOUSTIC_DEFAULTS:
+            raise ValueError(f"No se puede eliminar el estilo predeterminado del sistema '{style_id}'.")
+        if style_id in self.styles:
+            del self.styles[style_id]
+            self.save()
+            return True
+        return False
+
     # ==========================================
     # Gestión de Prompts Personalizados / Duplicación
     # ==========================================

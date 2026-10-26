@@ -78,6 +78,7 @@ _ALIASES = {
     "épico": "epico", "ciencia_ficción": "ciencia_ficcion", "poesía": "poesia",
     "misterio": "misterioso", "true_crime": "true_crime_documental",
     "podcast": "podcast_conversacional", "corporativo": "institucional_corporativo",
+    "style": "estilo",
 }
 _VOCAL_INFLECTIONS: dict[str, tuple[str, float, Style]] = {
     "risa": ("ja, ja", 0.25, Style(speed=1.08, gain_db=1.0)),
@@ -85,7 +86,7 @@ _VOCAL_INFLECTIONS: dict[str, tuple[str, float, Style]] = {
     "jadeo": ("...", 0.35, Style(speed=1.10, gain_db=-2.0)),
     "pausa_dramatica": ("", 1.40, Style()),
 }
-_SPECIAL = {"pausa", "voz", "sfx"} | set(_VOCAL_INFLECTIONS.keys())
+_SPECIAL = {"pausa", "voz", "sfx", "estilo"} | set(_VOCAL_INFLECTIONS.keys())
 
 
 @dataclass(frozen=True)
@@ -112,19 +113,20 @@ def _get_dynamic_effects() -> dict[str, _Effect]:
     """Sincroniza en caché los estilos personalizados o editados desde prompts_master.json."""
     global _DYNAMIC_EFFECTS_MTIME, _DYNAMIC_EFFECTS_CACHE
     try:
-        from src.ai.prompt_library import MASTER_PROMPTS_FILE, PromptLibrary
-        if MASTER_PROMPTS_FILE.exists():
-            mtime = MASTER_PROMPTS_FILE.stat().st_mtime
+        from src.ai.prompt_library import DEFAULT_PROMPTS_PATH, PromptLibrary
+        if DEFAULT_PROMPTS_PATH.exists():
+            mtime = DEFAULT_PROMPTS_PATH.stat().st_mtime
             if mtime != _DYNAMIC_EFFECTS_MTIME:
                 lib = PromptLibrary()
                 dyn: dict[str, _Effect] = {}
                 for st in lib.list_styles():
                     sid = st.id.strip().lower()
                     base_eff = EFFECTS.get(sid)
+                    tone_str = getattr(st, "tone", "") or st.name
                     dyn[sid] = _Effect(
                         speed=float(st.speed_multiplier),
                         gain_db=float(st.gain_db),
-                        instruct=base_eff.instruct if base_eff else (st.description[:80] if st.description else st.name),
+                        instruct=base_eff.instruct if base_eff else tone_str[:80],
                     )
                 _DYNAMIC_EFFECTS_CACHE = dyn
                 _DYNAMIC_EFFECTS_MTIME = mtime
@@ -171,7 +173,8 @@ def _fold(stack: list[tuple[str, str | None]]) -> Style:
         if name == "voz":
             voice = arg
             continue
-        eff = _resolve_effect(name) or _Effect()
+        target_name = (arg or "") if name == "estilo" else name
+        eff = _resolve_effect(target_name) or _Effect()
         speed *= eff.speed
         gain += eff.gain_db
         if eff.instruct and eff.instruct not in instruct:
@@ -233,6 +236,16 @@ def parse_markup(text: str) -> ParseResult:
             continue
         if name == "voz" and not arg:
             warnings.append("[voz] requiere un nombre ([voz:nombre]); ignorada")
+            continue
+        if name == "estilo":
+            if not arg:
+                warnings.append("[estilo] requiere un identificador ([estilo:cuento]); ignorada")
+                continue
+            st_canon = _canon(arg)
+            if st_canon is None or st_canon in _SPECIAL:
+                warnings.append(f"Estilo desconocido [{arg}] en [estilo:{arg}] descartado")
+                continue
+            stack.append(("estilo", st_canon))
             continue
         stack.append((name, arg))
     emit(text[pos:])

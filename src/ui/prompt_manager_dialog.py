@@ -24,7 +24,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.ai.prompt_library import NarrativeStyleDef, PromptItem, PromptLibrary
+from src.ai.prompt_library import (
+    STYLE_ACOUSTIC_DEFAULTS,
+    NarrativeStyleDef,
+    PromptItem,
+    PromptLibrary,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 PROMPTS_MD_FILE = PROJECT_ROOT / "PROMPTS_MAESTROS.md"
@@ -352,7 +357,7 @@ class PromptManagerWidget(QWidget):
             self.spin_temp.setEnabled(False)
             self.spin_topp.setEnabled(False)
             self.spin_ctx.setEnabled(False)
-            self.btn_delete.setEnabled(False)
+            self.btn_delete.setEnabled(item_id not in STYLE_ACOUSTIC_DEFAULTS)
             self.btn_set_active.setEnabled(False)
 
             self.spin_style_speed.setValue(float(style.speed_multiplier))
@@ -468,18 +473,20 @@ class PromptManagerWidget(QWidget):
                 style = self.library.get_style(self._current_id)
                 if not style:
                     return
-                item = PromptItem(
+                new_style = NarrativeStyleDef(
                     id=new_id,
-                    category="custom",
                     name=new_name.strip(),
-                    description=f"Basado en estilo {style.name}",
-                    system_prompt=self.edit_system.toPlainText(),
-                    user_template="{text}",
-                    mode_key="rewrite",
-                    parameters={"temperature": 0.45, "top_p": 0.9, "num_ctx": 4096},
-                    is_builtin=False,
+                    tone=self.edit_description.text().strip() or style.tone,
+                    cadence=style.cadence,
+                    vocabulary_profile=style.vocabulary_profile,
+                    prosody_guidance=self.edit_template.text().strip() or style.prosody_guidance,
+                    costar_framework=dict(style.costar_framework),
+                    system_prompt_addon=self.edit_system.toPlainText().strip() or style.system_prompt_addon,
+                    speed_multiplier=round(self.spin_style_speed.value(), 2),
+                    gain_db=round(self.spin_style_gain.value(), 1),
+                    pause_multiplier=round(self.spin_style_pause.value(), 2),
                 )
-                self.library.add_prompt(item)
+                self.library.add_style(new_style)
 
             self._populate_selector()
             for i in range(self.combo_items.count()):
@@ -489,24 +496,28 @@ class PromptManagerWidget(QWidget):
                     break
 
             self.prompts_updated.emit()
-            QMessageBox.information(self, "Prompt Duplicado", f"Se ha creado el prompt '{new_id}' satisfactoriamente.")
+            QMessageBox.information(self, "Elemento Duplicado", f"Se ha creado '{new_id}' satisfactoriamente.")
         except Exception as e:
             QMessageBox.warning(self, "Error al Duplicar", f"No se pudo duplicar: {e}")
 
     def _delete_current(self) -> None:
-        """Elimina un prompt personalizado."""
-        if self._current_type != "custom":
-            QMessageBox.warning(self, "Acción Denegada", "Solo se pueden eliminar prompts personalizados.")
+        """Elimina un prompt o estilo personalizado."""
+        is_custom_style = self._current_type == "style" and self._current_id not in STYLE_ACOUSTIC_DEFAULTS
+        if self._current_type != "custom" and not is_custom_style:
+            QMessageBox.warning(self, "Acción Denegada", "Solo se pueden eliminar prompts o estilos personalizados.")
             return
 
         reply = QMessageBox.question(
             self,
             "Confirmar Eliminación",
-            f"¿Estás seguro de eliminar el prompt '{self._current_id}'?",
+            f"¿Estás seguro de eliminar '{self._current_id}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
-            self.library.delete_prompt(self._current_id)
+            if is_custom_style:
+                self.library.delete_style(self._current_id)
+            else:
+                self.library.delete_prompt(self._current_id)
             self._populate_selector()
             self.prompts_updated.emit()
 

@@ -50,3 +50,12 @@ def test_parse_unclosed_tag_applies_until_end():
     res = parse_markup("Texto normal. [rapido]Esto se acelera y no cierra nunca.")
     assert len(res.segments) == 2
     assert res.segments[1].style.speed > 1.0
+
+
+def test_parse_estilo_tag_and_vocal_inflections():
+    res = parse_markup("[estilo:terror_psicologico]No mires detrás de ti.[/estilo] [risa] [pausa_dramatica] Fin.")
+    assert len(res.warnings) == 0
+    assert res.segments[0].text == "No mires detrás de ti."
+    assert res.segments[0].style.speed < 1.0
+    assert res.segments[0].style.gain_db < 0.0
+    assert any(s.pause_s >= 1.2 for s in res.segments)
