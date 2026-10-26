@@ -309,6 +309,7 @@ def test_ui_mainwindow_and_studio_dialogs_init():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PyQt6.QtWidgets import QApplication
     from src.ui.tray_app import MainWindow
+    from src.ui.manual_tab import MANUAL_MD_PATH, MANUAL_SECTIONS
     from src.ui.studio_dialogs import (
         LexiconManagerDialog,
         VoiceClonerDialog,
@@ -317,7 +318,18 @@ def test_ui_mainwindow_and_studio_dialogs_init():
 
     app = QApplication.instance() or QApplication([])
     win = MainWindow()
-    assert win.tabs.count() == 4
+    assert win.tabs.count() == 5
+    assert hasattr(win, "tab_manual")
+    assert win.tab_manual.section_list.count() == len(MANUAL_SECTIONS) + 1
+    assert MANUAL_MD_PATH.exists()
+    assert "MANUAL DE USO COMPLETO" in MANUAL_MD_PATH.read_text(encoding="utf-8")
+
+    # Probar búsqueda interactiva en el manual
+    win.tab_manual.search_edit.setText("campplus.onnx")
+    assert win.tab_manual.section_list.count() >= 2
+    win.tab_manual.search_edit.clear()
+    assert win.tab_manual.section_list.count() == len(MANUAL_SECTIONS) + 1
+
     assert hasattr(win, "chk_m4b")
     assert hasattr(win, "chk_split_chapters")
     assert hasattr(win, "chk_auto_cover_ai")

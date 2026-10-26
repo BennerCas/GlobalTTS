@@ -66,6 +66,7 @@ from src.core.audio_cache import GLOBAL_AUDIO_CACHE
 from src.core.hardware_monitor import HardwareMonitor
 from src.core.job import AudiobookPipeline, InterstitialItem, JobConfig, JobMetadata
 from src.ui.library_tab import LibraryTab
+from src.ui.manual_tab import ManualTab
 from src.ui.prompt_manager_dialog import PromptManagerDialog, PromptManagerWidget
 from src.ui.quick_reader_tab import QuickReaderTab
 from src.ui.studio_dialogs import (
@@ -271,6 +272,12 @@ class MainWindow(QDialog):
         self.btn_top_cache.clicked.connect(self.clear_audio_cache_action)
         top_bar.addWidget(self.btn_top_cache)
 
+        self.btn_top_manual = QPushButton("[ ? ] Manual")
+        self.btn_top_manual.setObjectName("secondaryActionButton")
+        self.btn_top_manual.setToolTip("Abrir el Manual de Uso Completo y Documentación de GlobalTTS")
+        self.btn_top_manual.clicked.connect(lambda: self.tabs.setCurrentIndex(4))
+        top_bar.addWidget(self.btn_top_manual)
+
         self.btn_orientation = QPushButton("[ ↕ ] Modo: Auto (Vertical)")
         self.btn_orientation.setObjectName("secondaryActionButton")
         self.btn_orientation.setToolTip("Alterna la distribución de la app entre Vertical (Monitores Retrato) y Horizontal (Panorámico)")
@@ -306,6 +313,10 @@ class MainWindow(QDialog):
         self.tab_prompts = PromptManagerWidget(library=self.prompt_library)
         self.tab_prompts.prompts_updated.connect(self.refresh_styles_combo)
         self.tabs.addTab(self.tab_prompts, "PROMPTS MAESTROS & ESTILOS IA")
+
+        # Pestaña 5: Manual de Uso Completo
+        self.tab_manual = ManualTab()
+        self.tabs.addTab(self.tab_manual, "MANUAL DE USO COMPLETO")
 
         main_layout.addWidget(self.tabs)
 
@@ -493,6 +504,10 @@ class MainWindow(QDialog):
         # 4. Actualizar pestaña de prompts
         if hasattr(self, 'tab_prompts') and hasattr(self.tab_prompts, 'set_orientation'):
             self.tab_prompts.set_orientation(eff)
+
+        # 5. Actualizar pestaña de manual
+        if hasattr(self, 'tab_manual') and hasattr(self.tab_manual, 'set_orientation'):
+            self.tab_manual.set_orientation(eff)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -1535,6 +1550,10 @@ class GlobalTTSTrayIcon(QSystemTrayIcon):
         prompts_action.triggered.connect(self.show_prompts_tab)
         menu.addAction(prompts_action)
 
+        manual_action = QAction("Manual de Uso Completo", menu)
+        manual_action.triggered.connect(self.show_manual_tab)
+        menu.addAction(manual_action)
+
         menu.addSeparator()
 
         wifi_action = QAction("Streaming Móvil WiFi & Código QR", menu)
@@ -1606,6 +1625,11 @@ class GlobalTTSTrayIcon(QSystemTrayIcon):
         self.show_main_window()
         if self.main_window:
             self.main_window.tabs.setCurrentIndex(3)
+
+    def show_manual_tab(self):
+        self.show_main_window()
+        if self.main_window:
+            self.main_window.tabs.setCurrentIndex(4)
 
     def show_wifi_dialog(self):
         self.show_main_window()
