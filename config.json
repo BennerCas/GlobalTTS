@@ -1,6 +1,6 @@
 {
     "voice": "es_MX-claude-high",
-    "speed_factor": 0.7,
+    "speed_factor": 0.5,
     "volume": 100,
     "save_directory": "C:\\Users\\Benner\\Downloads\\TTS_Audios",
     "auto_translate_en": true,
