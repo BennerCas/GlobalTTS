@@ -112,6 +112,7 @@ class AudioAssembler:
         output_wav_path: Path,
         progress_callback: Optional[callable] = None,
         pause_event: Optional[object] = None,
+        cancel_event: Optional[object] = None,
         dsp_mastering: bool = True,
         soundscape_preset: str = "none",
         custom_bgm_path: Optional[Path] = None,
@@ -134,6 +135,8 @@ class AudioAssembler:
 
             total = len(utterances)
             for idx, utt in enumerate(utterances):
+                if cancel_event is not None and hasattr(cancel_event, "is_set") and cancel_event.is_set():
+                    raise InterruptedError("Síntesis cancelada por el usuario.")
                 if pause_event is not None and hasattr(pause_event, "wait"):
                     pause_event.wait()
 

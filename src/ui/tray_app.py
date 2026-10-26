@@ -119,6 +119,7 @@ class BatchPipelineWorker(QThread):
         self.configs = configs
         self.signals = BatchWorkerSignals()
         self.is_cancelled = False
+        self.cancel_event = threading.Event()
         self.pause_event = threading.Event()
         self.pause_event.set()  # Despausado por defecto
 
@@ -133,6 +134,7 @@ class BatchPipelineWorker(QThread):
 
     def cancel(self) -> None:
         self.is_cancelled = True
+        self.cancel_event.set()
         self.pause_event.set()
 
     def run(self):
@@ -140,7 +142,7 @@ class BatchPipelineWorker(QThread):
         try:
             for idx, cfg in enumerate(self.configs):
                 self.pause_event.wait()
-                if self.is_cancelled:
+                if self.is_cancelled or self.cancel_event.is_set():
                     break
 
                 src_label = cfg.source_file if cfg.source_file.startswith(("http://", "https://")) else Path(cfg.source_file).name
@@ -154,13 +156,20 @@ class BatchPipelineWorker(QThread):
                     short_text = (utt.text[:65] + "...") if len(utt.text) > 65 else utt.text
                     self.signals.progress.emit(current, total, short_text)
 
-                meta = pipeline.run(
-                    progress_callback=prog_cb,
-                    stage_callback=stage_cb,
-                    pause_event=self.pause_event,
-                )
-                results.append(meta)
-                self.signals.item_finished.emit(idx, meta)
+                try:
+                    meta = pipeline.run(
+                        progress_callback=prog_cb,
+                        stage_callback=stage_cb,
+                        pause_event=self.pause_event,
+                        cancel_event=self.cancel_event,
+                    )
+                    results.append(meta)
+                    self.signals.item_finished.emit(idx, meta)
+                except InterruptedError:
+                    break
+
+            if self.is_cancelled or self.cancel_event.is_set():
+                self.signals.stage.emit("cancelled", "Lote cancelado por el usuario.", 0.0)
 
             self.signals.batch_finished.emit(results)
         except Exception as e:
@@ -1556,11 +1565,19 @@ class MainWindow(QDialog):
         elapsed = time.perf_counter() - self.start_timestamp if self.start_timestamp else 0
         self.val_elapsed.setText(str(timedelta(seconds=int(elapsed))))
         self.val_eta.setText("00:00:00")
-        self.lbl_stage.setText("Lote completado con éxito.")
-        self.lbl_active_utt.setText(f"Procesados {len(results)} libro(s) en {elapsed:.1f}s.")
 
-        self.res_card.setVisible(True)
-        self.res_summary.setText(f"Se han generado {len(results)} audiolibro(s) con M4B, Capítulos, SEO y RSS en sus carpetas.")
+        is_cancelled = bool(self.worker and (self.worker.is_cancelled or self.worker.cancel_event.is_set()))
+        if is_cancelled:
+            self.lbl_stage.setText("Lote cancelado por el usuario.")
+            self.lbl_active_utt.setText(f"Se procesaron {len(results)} libro(s) antes de la cancelación.")
+            self.res_card.setVisible(bool(results))
+            if results:
+                self.res_summary.setText(f"Se generaron {len(results)} audiolibro(s) antes de cancelar la cola.")
+        else:
+            self.lbl_stage.setText("Lote completado con éxito.")
+            self.lbl_active_utt.setText(f"Procesados {len(results)} libro(s) en {elapsed:.1f}s.")
+            self.res_card.setVisible(True)
+            self.res_summary.setText(f"Se han generado {len(results)} audiolibro(s) con M4B, Capítulos, SEO y RSS en sus carpetas.")
 
         self.tab_library.refresh_library()
         self.update_hw_telemetry()

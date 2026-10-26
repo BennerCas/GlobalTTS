@@ -146,6 +146,7 @@ class AudiobookPipeline:
         progress_callback: Optional[callable] = None,
         stage_callback: Optional[callable] = None,
         pause_event: Optional[object] = None,
+        cancel_event: Optional[object] = None,
     ) -> JobMetadata:
         start_time = time.perf_counter()
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -204,6 +205,8 @@ class AudiobookPipeline:
         new_chapters = []
         char_map: dict[str, str] = {"narrador": self.config.voice_key}
         for ch in doc.chapters:
+            if cancel_event is not None and hasattr(cancel_event, "is_set") and cancel_event.is_set():
+                raise InterruptedError("Procesamiento cancelado por el usuario.")
             if pause_event is not None and hasattr(pause_event, "wait"):
                 pause_event.wait()
             new_paragraphs = []
@@ -418,6 +421,7 @@ class AudiobookPipeline:
             output_wav_path=temp_wav,
             progress_callback=progress_callback,
             pause_event=pause_event,
+            cancel_event=cancel_event,
             dsp_mastering=self.config.dsp_mastering,
             soundscape_preset=self.config.soundscape_preset,
             custom_bgm_path=Path(self.config.custom_bgm_path) if self.config.custom_bgm_path else None,
