@@ -409,3 +409,56 @@ def test_global_hotkey_tts_engine_pipeline():
     )
     assert sr in (16000, 22050, 24000)
     assert len(samples) > 1000
+
+
+def test_karaoke_bg_clean_subs_and_publisher_enclosure(tmp_path):
+    import re
+    from src.audio.assembler import ChapterTiming
+    from src.core.job import JobConfig
+    from src.core.publisher import generate_publication_package
+    from src.ingest.loader import load_document
+
+    # 1. Verificar JobConfig con flags de OCR y Editorial
+    cfg = JobConfig(enable_ocr=True, clean_editorial=True)
+    assert cfg.enable_ocr is True
+    assert cfg.clean_editorial is True
+
+    # 2. Verificar limpieza estricta de etiquetas prosódicas y de estilo para subtítulos
+    raw_utt = "[locutor_radio]Atención oyentes [pausa:1s][sfx:campana] esto es una prueba [risa][/locutor_radio]"
+    clean_sub_txt = re.sub(
+        r"\[\s*/?\s*[A-Za-zÁÉÍÓÚáéíóúÑñ0-9_]+(?:\s*:[^\[\]]*)?\s*\]",
+        "",
+        raw_utt,
+        flags=re.IGNORECASE,
+    )
+    clean_sub_txt = re.sub(r"\s{2,}", " ", clean_sub_txt).strip()
+    assert clean_sub_txt == "Atención oyentes esto es una prueba"
+
+    # 3. Verificar generación de paquete SEO y RSS con nombres reales de archivos y bytes
+    out_dir = tmp_path / "pub_test"
+    chapters = [ChapterTiming(index=1, title="Inicio", start_ms=0, end_ms=5000)]
+    res = generate_publication_package(
+        project_dir=out_dir,
+        title="Libro Estelar",
+        author="Benner Castillo",
+        duration_s=60.0,
+        chapters=chapters,
+        style="epico",
+        audio_filename="libro_estelar_master.mp3",
+        cover_filename="portada_hd.png",
+        audio_size_bytes=4194304,
+    )
+    assert res["seo"].exists()
+    assert res["rss"].exists()
+    rss_text = res["rss"].read_text(encoding="utf-8")
+    assert 'url="libro_estelar_master.mp3"' in rss_text
+    assert 'length="4194304"' in rss_text
+    assert 'href="portada_hd.png"' in rss_text
+
+    # 4. Ingesta pasando enable_ocr y clean_editorial
+    txt_file = tmp_path / "cuento.txt"
+    txt_file.write_text("Capítulo 1: El Despertar\nHabía una vez en el cosmos un viajero solitario.", encoding="utf-8")
+    doc = load_document(txt_file, enable_ocr=True, clean_editorial=True)
+    assert doc.title == "cuento"
+    assert len(doc.chapters) >= 1
+

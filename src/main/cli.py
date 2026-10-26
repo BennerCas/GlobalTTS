@@ -36,6 +36,8 @@ def main():
     parser.add_argument("--video-bg", default="audiogram", choices=["black", "cover_backdrop", "audiogram"], help="Fondo visual del video karaoke")
     parser.add_argument("--sfx", action="store_true", help="Activar inyección semántica de efectos Foley SFX")
     parser.add_argument("--no-dsp", action="store_true", help="Desactivar cadena de masterización DSP (-1.0 dBTP)")
+    parser.add_argument("--no-ocr", action="store_true", help="Desactivar reconocimiento OCR local para PDFs escaneados")
+    parser.add_argument("--no-clean", action="store_true", help="Desactivar limpieza de encabezados/pies editoriales")
     parser.add_argument("--list-voices", action="store_true", help="Listar voces locales disponibles y salir")
 
     args = parser.parse_args()
@@ -73,6 +75,8 @@ def main():
         video_background=args.video_bg,
         auto_sfx=args.sfx,
         dsp_mastering=not args.no_dsp,
+        enable_ocr=not args.no_ocr,
+        clean_editorial=not args.no_clean,
         narration=NarrationConfig(enabled=False, style=args.style),
     )
 

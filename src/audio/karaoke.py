@@ -332,7 +332,7 @@ def render_karaoke_video(
             ])
         cmd.extend(["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"])
 
-    elif has_cover and background_mode in ("cover_backdrop", "black"):
+    elif has_cover and background_mode == "cover_backdrop":
         # Portada como fondo 1080p/Vertical con sutil oscurecimiento para legibilidad
         cmd.extend([
             "-loop", "1",

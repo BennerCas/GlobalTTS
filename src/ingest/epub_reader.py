@@ -72,6 +72,7 @@ def read_epub(path: Path) -> dict:
         raise DocumentError(f"No se pudo leer el EPUB: {exc}") from exc
 
     chapters: list[Chapter] = []
+    short_fallback_chapters: list[Chapter] = []
     for item_id, linear in book.spine:
         item = book.get_item_with_id(item_id)
         if item is None or item.get_type() != ebooklib.ITEM_DOCUMENT or linear == "no":
@@ -79,9 +80,18 @@ def read_epub(path: Path) -> dict:
         if "nav" in (getattr(item, "properties", None) or []):
             continue
         title, paragraphs = _parse_chapter(item.get_content())
-        if sum(len(p) for p in paragraphs) < MIN_CHAPTER_CHARS:
+        char_len = sum(len(p) for p in paragraphs)
+        if char_len == 0:
+            continue
+        if char_len < MIN_CHAPTER_CHARS:
+            short_fallback_chapters.append(
+                Chapter(title=title or f"Sección {len(short_fallback_chapters) + 1}", paragraphs=tuple(paragraphs))
+            )
             continue
         chapters.append(Chapter(title=title or f"Sección {len(chapters) + 1}", paragraphs=tuple(paragraphs)))
+
+    if not chapters and short_fallback_chapters:
+        chapters = short_fallback_chapters
 
     return {
         "title": _metadata(book, "title") or path.stem,

@@ -66,4 +66,7 @@ def group_into_chapters(blocks: Iterable[str], default_title: str) -> tuple[Chap
         else:
             current.append(block)
     flush()
+    if not chapters and title:
+        # Fallback si el documento consistió únicamente en encabezado(s)
+        chapters.append(Chapter(title=title, paragraphs=(title,)))
     return tuple(chapters)

@@ -26,7 +26,11 @@ _READERS = {
 SUPPORTED_EXTENSIONS = frozenset(_READERS)
 
 
-def load_document(path: str | Path) -> Document:
+def load_document(
+    path: str | Path,
+    enable_ocr: bool = True,
+    clean_editorial: bool = True,
+) -> Document:
     """Detecta el formato (archivo local o URL http/https) y devuelve un ``Document`` normalizado."""
     raw_str = str(path).strip()
     if raw_str.startswith(("http://", "https://")):
@@ -44,7 +48,10 @@ def load_document(path: str | Path) -> Document:
         supported = ", ".join(sorted(SUPPORTED_EXTENSIONS))
         raise UnsupportedFormatError(f"Formato '{ext or '(sin extensión)'}' no soportado (válidos: {supported})")
 
-    result = reader(file_path)
+    if ext == ".pdf":
+        result = read_pdf(file_path, enable_ocr=enable_ocr, clean_editorial=clean_editorial)
+    else:
+        result = reader(file_path)
     if isinstance(result, Document):
         return result
 

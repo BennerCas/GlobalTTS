@@ -153,7 +153,13 @@ class AudioAssembler:
 
                     is_pure_sfx = utt.text.strip().lower().startswith("[sfx:") and utt.text.strip().endswith("]")
                     if not is_pure_sfx:
-                        clean_sub_txt = re.sub(r"\[\s*sfx\s*:[^\[\]]+\]", "", utt.text, flags=re.IGNORECASE).strip()
+                        clean_sub_txt = re.sub(
+                            r"\[\s*/?\s*[A-Za-zÁÉÍÓÚáéíóúÑñ0-9_]+(?:\s*:[^\[\]]*)?\s*\]",
+                            "",
+                            utt.text,
+                            flags=re.IGNORECASE,
+                        )
+                        clean_sub_txt = re.sub(r"\s{2,}", " ", clean_sub_txt).strip()
                         if clean_sub_txt:
                             words = calculate_word_timings(clean_sub_txt, chunk_dur_s)
                             timed_sentences.append(

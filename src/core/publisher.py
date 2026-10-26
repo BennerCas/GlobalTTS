@@ -42,6 +42,9 @@ def generate_publication_package(
     chapters: list[ChapterTiming],
     style: str = "cuento",
     summary_text: str = "",
+    audio_filename: str = "audiolibro_completo.mp3",
+    cover_filename: str = "cover.png",
+    audio_size_bytes: int = 0,
 ) -> dict[str, Path]:
     """Genera `youtube_spotify_seo.txt` y `podcast_rss.xml` dentro de `project_dir`."""
     project_dir = Path(project_dir)
@@ -91,6 +94,9 @@ HUMAN AI SYNERGY BY BENNER CASTILLO - 2026®
     esc_title = html.escape(clean_title)
     esc_author = html.escape(clean_author)
     esc_summary = html.escape(summary_text.strip() or f"Audiolibro completo: {clean_title} ({clean_author}).")
+    esc_audio = html.escape(audio_filename or "audiolibro_completo.mp3")
+    esc_cover = html.escape(cover_filename or "cover.png")
+    enclosure_bytes = audio_size_bytes if audio_size_bytes > 0 else max(1024, dur_int * 32000)
 
     rss_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:content="http://purl.org/rss/1.0/modules/content/">
@@ -102,12 +108,12 @@ HUMAN AI SYNERGY BY BENNER CASTILLO - 2026®
     <itunes:author>{esc_author}</itunes:author>
     <description>{esc_summary}</description>
     <itunes:explicit>false</itunes:explicit>
-    <itunes:image href="cover.png"/>
+    <itunes:image href="{esc_cover}"/>
     <item>
       <title>{esc_title} (Edición Completa)</title>
       <itunes:author>{esc_author}</itunes:author>
       <description>{esc_summary}</description>
-      <enclosure url="audiolibro_completo.mp3" length="{dur_int * 24000}" type="audio/mpeg"/>
+      <enclosure url="{esc_audio}" length="{enclosure_bytes}" type="audio/mpeg"/>
       <guid isPermaLink="false">{esc_title.lower().replace(' ', '_')}_master</guid>
       <pubDate>{pub_date}</pubDate>
       <itunes:duration>{dur_int}</itunes:duration>

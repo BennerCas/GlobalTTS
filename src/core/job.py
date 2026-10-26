@@ -80,6 +80,7 @@ class JobConfig:
     export_m4b: bool = False
     export_epub3: bool = False
     split_chapters: bool = False
+    enable_ocr: bool = True
     clean_editorial: bool = True
     apply_lexicon: bool = True
     emotional_modulation: bool = True
@@ -155,7 +156,11 @@ class AudiobookPipeline:
 
         # 1. Ingesta del documento (soporta TXT, PDF con OCR local, EPUB, Imágenes y URLs Web)
         emit_stage("ingest", "Analizando documento y extrayendo capítulos...", 2.0)
-        doc: Document = load_document(self.config.source_file)
+        doc: Document = load_document(
+            self.config.source_file,
+            enable_ocr=self.config.enable_ocr,
+            clean_editorial=self.config.clean_editorial,
+        )
 
         # 2. Carpeta dedicada en biblioteca/ para este libro
         src_stem = "articulo_web" if str(self.config.source_file).startswith(("http://", "https://")) else Path(self.config.source_file).stem
@@ -197,6 +202,7 @@ class AudiobookPipeline:
             emit_stage("ai_analysis", "Analizando con Mistral NeMo (narración / expresividad)...", 5.0)
 
         new_chapters = []
+        char_map: dict[str, str] = {"narrador": self.config.voice_key}
         for ch in doc.chapters:
             if pause_event is not None and hasattr(pause_event, "wait"):
                 pause_event.wait()
@@ -217,7 +223,6 @@ class AudiobookPipeline:
                         )
                     elif self.config.narration.mode == "dialogue_analysis":
                         analysis = enhancer.analyze_dialogues(processed, prompt_id=self.config.narration.prompt_id)
-                        char_map: dict[str, str] = {"narrador": self.config.voice_key}
                         pool = [v for v in self.config.voice_pool if v != self.config.voice_key]
                         if not pool and self.config.secondary_voice_key:
                             pool = [self.config.secondary_voice_key]
@@ -566,15 +571,20 @@ class AudiobookPipeline:
                 out_trailer_str = str(trailer_p.resolve())
 
         # 12.2 Generar Paquete SEO YouTube / Spotify / Podcast RSS
+        seo_package_files: dict[str, Path] = {}
         if self.config.generate_seo_package:
             try:
-                generate_publication_package(
+                audio_sz = Path(out_audio_str).stat().st_size if out_audio_str and Path(out_audio_str).exists() else 0
+                seo_package_files = generate_publication_package(
                     project_dir=book_folder,
                     title=doc_display_title,
                     author=doc.author or firma_str,
                     duration_s=dur_s,
                     chapters=ch_timings,
                     style=active_style,
+                    audio_filename=final_mp3.name,
+                    cover_filename=copied_cover_path.name if copied_cover_path else "cover.png",
+                    audio_size_bytes=audio_sz,
                 )
             except Exception as exc:
                 logger.warning("Aviso generando paquete SEO: %s", exc)
@@ -662,6 +672,22 @@ class AudiobookPipeline:
                 "ruta": str((book_folder / "capitulos").resolve()),
                 "cantidad": len(split_ch_files),
                 "formato": f"{len(split_ch_files)} Pistas MP3 por Capítulo",
+            }
+        if "seo" in seo_package_files and seo_package_files["seo"].exists():
+            sz = seo_package_files["seo"].stat().st_size
+            archivos_dict["paquete_seo_txt"] = {
+                "ruta": str(seo_package_files["seo"].resolve()),
+                "tamano_bytes": sz,
+                "tamano_mb": f"{sz / 1024:.1f} KB",
+                "formato": "Paquete SEO YouTube / Spotify (Timestamps + Tags)",
+            }
+        if "rss" in seo_package_files and seo_package_files["rss"].exists():
+            sz = seo_package_files["rss"].stat().st_size
+            archivos_dict["podcast_rss"] = {
+                "ruta": str(seo_package_files["rss"].resolve()),
+                "tamano_bytes": sz,
+                "tamano_mb": f"{sz / 1024:.1f} KB",
+                "formato": "Podcast RSS 2.0 (Apple / Spotify / iTunes)",
             }
 
         # 14. Metadatos según ESTRUCTURA.md y directrices industriales
